@@ -3,4 +3,4 @@ pragma solidity ^0.8.17;
 
 import "forge-std/Test.sol";
 
-contract CounterTest is Test {}
+contract ERC20ReflexionTest is Test {}
