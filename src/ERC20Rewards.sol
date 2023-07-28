@@ -11,9 +11,9 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
 
     uint256 private constant feeDenominator = 10000;
 
-    IUniswapV2Router02 private constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-
     address private marketingAddress;
+
+    IUniswapV2Router02 private constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
     // amount of accumulated fees since last swapback.
     uint256 private rewardFeeAmountAcc;
@@ -48,7 +48,6 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     uint256 public swapbackThreshold;
 
     mapping(address => bool) public ammPairs;
-    mapping(address => bool) public excludedFromFee;
     mapping(address => bool) public excludedFromRewards;
 
     constructor(string memory name, string memory symbol, uint256 _totalSupply)
@@ -61,8 +60,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         // deployer is original marketing fee receiver.
         marketingAddress = msg.sender;
 
-        // exclude this contract from fee and rewards.
-        _excludeFromFee(address(this));
+        // exclude this contract from rewards.
         _excludeFromRewards(address(this));
 
         // create this pair and register it.
@@ -109,10 +107,12 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     }
 
     function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
-        // get the fee
-        bool isTaxedBuy = ammPairs[from] && !excludedFromFee[to];
-        bool isTaxedSell = !excludedFromFee[from] && ammPairs[to];
+        // get whether it is a buy/sell that should be taxed.
+        bool isSelf = address(this) == from || address(this) == to;
+        bool isTaxedBuy = isSelf && ammPairs[from];
+        bool isTaxedSell = isSelf && ammPairs[to];
 
+        // compute the fees.
         uint256 rewardFee = (isTaxedBuy ? buyRewardFee : 0) + (isTaxedSell ? sellRewardFee : 0);
         uint256 marketingFee = (isTaxedBuy ? buyMarketingFee : 0) + (isTaxedSell ? sellMarketingFee : 0);
 
@@ -129,10 +129,6 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         if (totalFeeAmount > 0) _transfer(from, address(this), totalFeeAmount);
 
         return super.transferFrom(from, to, amount - totalFeeAmount);
-    }
-
-    function _excludeFromFee(address addr) internal {
-        excludedFromFee[addr] = true;
     }
 
     function _excludeFromRewards(address addr) internal {
