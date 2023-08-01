@@ -256,7 +256,13 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
      * it is the balance of this contract minus the fee collected for marketing.
      */
     function _rewardFeeAmount() internal view returns (uint256) {
-        return balanceOf(address(this)) - _marketingFeeAmount;
+        uint256 balance = balanceOf(address(this));
+
+        if (balance > _marketingFeeAmount) {
+            return balance - _marketingFeeAmount;
+        }
+
+        return 0;
     }
 
     /**
