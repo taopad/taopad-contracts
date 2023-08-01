@@ -108,6 +108,10 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     // exposed view functions.
     // =========================================================================
 
+    function totalShares() external view returns (uint256) {
+        return _totalShares;
+    }
+
     function rewardFeeAmount() external view returns (uint256) {
         return _rewardFeeAmount();
     }
@@ -381,16 +385,16 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     function _distributeRewards() internal {
         // ensure to not distribute if no fee collected or no shares.
         uint256 amountToSwap = _rewardFeeAmount();
-        uint256 totalShares = _totalShares;
+        uint256 currentTotalShares = _totalShares;
 
         if (amountToSwap == 0) return;
-        if (totalShares == 0) return;
+        if (currentTotalShares == 0) return;
 
         // swapback for eth.
         uint256 ETHToDistribute = _swapback(amountToSwap);
 
         // update the distribution values.
-        _ETHR += (ETHToDistribute * precision) / totalShares;
+        _ETHR += (ETHToDistribute * precision) / currentTotalShares;
         _ETHRewardAmount += ETHToDistribute;
         _ETHTotalRewarded += ETHToDistribute;
     }
