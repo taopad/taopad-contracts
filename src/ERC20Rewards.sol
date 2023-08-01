@@ -28,7 +28,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     uint256 private _ETHTotalRewarded;
 
     // total shares of this token.
-    // (different from total supply because of excluded wallets).
+    // (different from total supply because of fees and excluded wallets).
     uint256 private _totalShares;
 
     // shareholders record.
@@ -150,7 +150,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     }
 
     function distribute() external {
-        _distribute();
+        _distributeFeeAmount();
     }
 
     // =========================================================================
@@ -334,37 +334,27 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     }
 
     /**
-     * distribute balance - accumulated marketing amount by swapping it to ETH.
+     * distribute fee amount as rewards by swapping it to ETH.
      *
-     * if ETH has been sent to the contract by mistake it gets distributed as
-     * regular rewards.
+     * the fee amount is balance - marketing fee amount collected.
+     *
+     * if ETH has been sent to the contract it is considered as donation
+     * to the shareholders and is distributed as rewards.
      */
-    function _distribute() internal {
-        // get the amount to distribute.
-        uint256 amount = _rewardFeeAmount();
-
-        // nothing happen when nothing to distribute.
-        if (amount == 0) return;
-
-        // approve router to spend tokens.
-        _approve(address(this), address(router), amount);
-
-        // swapback the whole amount to eth.
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = router.WETH();
-
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(amount, 0, path, address(this), block.timestamp);
-
-        // just ensure to not distribute if no shares.
-        // in this case ETH is accumulated for next distribution.
+    function _distributeFeeAmount() internal {
+        // ensure to not distribute if no fee collected or no shares.
+        uint256 amountToSwap = _rewardFeeAmount();
         uint256 totalShares = _totalShares;
 
+        if (amountToSwap == 0) return;
         if (totalShares == 0) return;
 
+        // swapback for eth.
+        _swapback(amountToSwap);
+
         // compute the eth to distribute:
-        // ETH balance (including newly swapped eth) - current reward amount (current amount remaining to distribute).
-        // if someone sent eth to the contract it gets distributed as regular rewards.
+        // ETH balance (including newly swapped eth) - reward amount (distributed amount not claimed yet).
+        // if someone sent eth to the contract it gets distributed like regular rewards.
         uint256 ETHBalance = address(this).balance;
         uint256 ETHToDistribute = ETHBalance - _ETHRewardAmount;
 
@@ -372,6 +362,45 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         _ETHR += (ETHToDistribute * precision) / totalShares;
         _ETHRewardAmount += ETHToDistribute;
         _ETHTotalRewarded += ETHToDistribute;
+    }
+
+    /**
+     * add the fee amount as liquidity by swapping half as eth.
+     *
+     * LP tokens are minted to the sender.
+     */
+    function _liquifyFeeAmount() internal {
+        // ensure to not liquify if no fee collected.
+        uint256 amountToLP = _rewardFeeAmount();
+
+        if (amountToLP == 0) return;
+
+        // get two half.
+        uint256 firstHalfToken = amountToLP / 2;
+        uint256 secondHalfToken = amountToLP - firstHalfToken;
+
+        // swapback second half.
+        uint256 originalBalance = payable(address(this)).balance;
+
+        _swapback(secondHalfToken);
+
+        uint256 secondHalfETH = payable(address(this)).balance - originalBalance;
+
+        // add liquidity by minting LP to sender.
+        router.addLiquidityETH{value: secondHalfETH}(address(this), firstHalfToken, 0, 0, msg.sender, block.timestamp);
+    }
+
+    /**
+     * burn the fee amount.
+     */
+    function _burnFeeAmount() internal {
+        // ensure to not burn if no fee collected.
+        uint256 amountToBurn = _rewardFeeAmount();
+
+        if (amountToBurn == 0) return;
+
+        // actually burn.
+        _burn(address(this), amountToBurn);
     }
 
     /**
@@ -410,6 +439,21 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         ammPairs[pair] = true;
 
         _excludeFromRewards(pair);
+    }
+
+    /**
+     * Sell the given amount of tokens for ETH.
+     */
+    function _swapback(uint256 amount) internal {
+        // approve router to spend tokens.
+        _approve(address(this), address(router), amount);
+
+        // swapback the whole amount to eth.
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = router.WETH();
+
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(amount, 0, path, address(this), block.timestamp);
     }
 
     receive() external payable {}
