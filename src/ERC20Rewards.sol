@@ -159,19 +159,37 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     }
 
     function distributeRewards() external {
-        _distributeRewards();
+        uint256 amountToSwap = _rewardFeeAmount();
+        uint256 currentTotalShares = _totalShares;
+
+        require(amountToSwap > 0, "no reward to distribute");
+        require(currentTotalShares > 0, "no one to distribute");
+
+        _distributeRewards(amountToSwap, currentTotalShares);
     }
 
     function liquifyRewards() external {
-        _liquifyRewards();
+        uint256 amountToLiquify = _rewardFeeAmount();
+
+        require(amountToLiquify > 0, "no reward to liquify");
+
+        _liquifyRewards(amountToLiquify);
     }
 
     function burnRewards() external {
-        _burnRewards();
+        uint256 amountToBurn = _rewardFeeAmount();
+
+        require(amountToBurn > 0, "no reward to burn");
+
+        _burnRewards(amountToBurn);
     }
 
     function buybackExtra() external {
-        _buybackExtra();
+        uint256 amountToBuyback = _extraETHAmount();
+
+        require(amountToBuyback > 0, "nothing to buyback");
+
+        _buybackExtra(amountToBuyback);
     }
 
     // =========================================================================
@@ -382,14 +400,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     /**
      * distribute fee amount as rewards by swapping it to ETH.
      */
-    function _distributeRewards() internal {
-        // ensure to not distribute if no fee collected or no shares.
-        uint256 amountToSwap = _rewardFeeAmount();
-        uint256 currentTotalShares = _totalShares;
-
-        if (amountToSwap == 0) return;
-        if (currentTotalShares == 0) return;
-
+    function _distributeRewards(uint256 amountToSwap, uint256 currentTotalShares) internal {
         // swapback for eth.
         uint256 ETHToDistribute = _swapback(amountToSwap);
 
@@ -404,12 +415,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
      *
      * LP tokens are minted to the sender.
      */
-    function _liquifyRewards() internal {
-        // ensure to not liquify if no fee collected.
-        uint256 amountToLP = _rewardFeeAmount();
-
-        if (amountToLP == 0) return;
-
+    function _liquifyRewards(uint256 amountToLP) internal {
         // get two half.
         uint256 firstHalfToken = amountToLP / 2;
         uint256 secondHalfToken = amountToLP - firstHalfToken;
@@ -424,26 +430,14 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     /**
      * burn the fee amount.
      */
-    function _burnRewards() internal {
-        // ensure to not burn if no fee collected.
-        uint256 amountToBurn = _rewardFeeAmount();
-
-        if (amountToBurn == 0) return;
-
-        // actually burn.
+    function _burnRewards(uint256 amountToBurn) internal {
         _burn(address(this), amountToBurn);
     }
 
     /**
      * buyback token using the ETH manually sent to this contract.
      */
-    function _buybackExtra() internal {
-        // ensure to not buyback if no extra ETH.
-        uint256 amountToBuyback = _extraETHAmount();
-
-        if (amountToBuyback == 0) return;
-
-        // buyback the whole amount for this token.
+    function _buybackExtra(uint256 amountToBuyback) internal {
         address[] memory path = new address[](2);
         path[0] = router.WETH();
         path[1] = address(this);
