@@ -36,11 +36,11 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     uint256 private _totalShares;
 
     // shareholders record.
-    // (gets updated after transfer from/to a non excluded address).
+    // (non excluded addresses are updated after they send/receive tokens).
     mapping(address => Share) private _shareholders;
 
     struct Share {
-        uint256 amount; // recorded balance before last transfer.
+        uint256 amount; // recorded balance after last transfer.
         uint256 earned; // amount of ETH earned but not claimed yet.
         uint256 ETHRLast; // _ETHR value of the last time ETH was earned.
     }
@@ -56,7 +56,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     uint256 private _marketingFeeAmount;
 
     // =========================================================================
-    // taxes setting.
+    // fee settings.
     // =========================================================================
 
     // bps denominator.
