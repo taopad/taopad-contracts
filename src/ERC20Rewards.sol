@@ -19,6 +19,9 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     // rewards accounting.
     // =========================================================================
 
+    // numerator multiplier so _ETHR does not get rounded to 0.
+    uint256 private constant precision = 1e18;
+
     // the amount of ETH per this token share.
     uint256 private _ETHR;
 
@@ -41,9 +44,6 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         uint256 earned; // amount of ETH earned but not claimed yet.
         uint256 ETHRLast; // _ETHR value of the last time ETH was earned.
     }
-
-    // numerator multiplier so _ETHR does not get rounded to 0.
-    uint256 private constant precision = 1e18;
 
     // =========================================================================
     // marketing fee.
