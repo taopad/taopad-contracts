@@ -15,10 +15,6 @@ contract SwapTest is Test {
         token = new ERC20Rewards("Reward token", "RTK", 1e7);
 
         router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-
-        addLiquidity(1000 ether, token.totalSupply());
-
-        token.enableTaxes();
     }
 
     function addLiquidity(uint256 ETHAmount, uint256 tokenAmount) private {
@@ -31,24 +27,22 @@ contract SwapTest is Test {
         );
     }
 
-    function buyToken(address addr, uint256 ETHAmount, uint256 minAmountOut) private {
-        vm.deal(addr, ETHAmount);
-
+    function buyToken(address addr, uint256 ETHAmountToSell) private {
         address[] memory path = new address[](2);
         path[0] = router.WETH();
         path[1] = address(token);
 
         vm.prank(addr);
 
-        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: ETHAmount}(
-            minAmountOut, path, addr, block.timestamp
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: ETHAmountToSell}(
+            0, path, addr, block.timestamp
         );
     }
 
-    function sellToken(address addr, uint256 tokenAmount, uint256 minAmountOut) private {
+    function sellToken(address addr, uint256 tokenAmountToSell) private {
         vm.prank(addr);
 
-        token.approve(address(router), tokenAmount);
+        token.approve(address(router), tokenAmountToSell);
 
         address[] memory path = new address[](2);
         path[0] = address(token);
@@ -56,12 +50,10 @@ contract SwapTest is Test {
 
         vm.prank(addr);
 
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            tokenAmount, minAmountOut, path, addr, block.timestamp
-        );
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(tokenAmountToSell, 0, path, addr, block.timestamp);
     }
 
-    function getAmountForETH(uint256 ETHAmount) private view returns (uint256) {
+    function getTokenAmountForETH(uint256 ETHAmount) private view returns (uint256) {
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
         IUniswapV2Pair pair = IUniswapV2Pair(factory.getPair(router.WETH(), address(token)));
 
@@ -70,7 +62,7 @@ contract SwapTest is Test {
         return (reserve0 * ETHAmount) / reserve1;
     }
 
-    function getAmountForToken(uint256 tokenAmount) private view returns (uint256) {
+    function getETHAmountForToken(uint256 tokenAmount) private view returns (uint256) {
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
         IUniswapV2Pair pair = IUniswapV2Pair(factory.getPair(router.WETH(), address(token)));
 
@@ -79,47 +71,68 @@ contract SwapTest is Test {
         return (reserve1 * tokenAmount) / reserve0;
     }
 
-    function testTrue() public {
-        assertTrue(true);
+    // normalize given amount with token decimals.
+    function norm(uint256 amount) private view returns (uint256) {
+        return amount * 10 ** token.decimals();
     }
 
-    function testNoTaxCollectedAfterInitialLiq() public {
+    function testNoTaxCollectedWhenTaxesAreNotEnabled() public {
+        addLiquidity(1000 ether, token.totalSupply());
+
         assertEq(token.balanceOf(address(token)), 0);
     }
 
-    function testSwapAreTaxed() public {
-        address addr = vm.addr(1);
+    function testBuyAreTaxed() public {
+        // setup buyer.
+        address buyer = vm.addr(1);
 
-        vm.label(addr, "Buyer");
+        vm.label(buyer, "Buyer");
 
-        // buy
-        uint256 ethAmountToSell = 10 ether;
+        // give 1 ether to buyer.
+        vm.deal(buyer, 1 ether);
 
-        uint256 tokenAmountForEth = getAmountForETH(ethAmountToSell);
+        // add liq (1eth = 10 000 tokens) and enable taxes.
+        addLiquidity(1000 ether, token.totalSupply());
 
-        uint256 minTokenAmount = (tokenAmountForEth * 88) / 100;
+        token.enableTaxes();
 
-        buyToken(addr, ethAmountToSell, minTokenAmount);
+        // buy 10000 tokens (~ 1 eth).
+        buyToken(buyer, 1 ether);
 
-        // 10 eth should be worth 100 000 tokens.
-        // minus taxes (10%) and slippage/swap fee then at least 89000 tokens.
-        assertGe(minTokenAmount, 89000 * 10 * token.decimals());
-        assertGe(token.balanceOf(addr), minTokenAmount);
-        assertGe(token.balanceOf(address(token)), 8900 * 10 * token.decimals());
+        // buyer should get 9000 tokens (10000 tokens minus 10% fee).
+        // contract should collect 1000 tokens (10% of 10000 tokens).
+        // 1000 as contract balance, 800 as rewards, 200 as marketing.
+        // add 1% tolerance to account for swap fee/slippage.
+        assertApproxEqRel(token.balanceOf(buyer), norm(9000), 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), norm(1000), 0.01e18);
+        assertApproxEqRel(token.rewardFeeAmount(), norm(800), 0.01e18);
+        assertApproxEqRel(token.marketingFeeAmount(), norm(200), 0.01e18);
+    }
 
-        // sell
-        uint256 originalBalance = payable(addr).balance;
+    function testSellAreTaxed() public {
+        address seller = vm.addr(1);
 
-        uint256 tokenAmountToSell = 10000 * 10 ** token.decimals();
+        vm.label(seller, "Seller");
 
-        uint256 ETHAmountForToken = getAmountForToken(tokenAmountToSell);
+        // send some of the supply to seller so he can sell later.
+        // (send 1 million so 9 million is put in liq)
+        token.transfer(seller, norm(1e6));
 
-        uint256 minETHAmount = (ETHAmountForToken * 88) / 100;
+        // add liq (1eth = 10 000 tokens) and enabled taxes.
+        addLiquidity(900 ether, token.totalSupply() - norm(1e6));
 
-        sellToken(addr, tokenAmountToSell, minETHAmount);
+        token.enableTaxes();
 
-        assertGe(minTokenAmount, 0.88 ether);
-        assertGe(payable(addr).balance, originalBalance + minETHAmount);
-        assertGe(token.balanceOf(address(token)), 2 * 8900 * 10 * token.decimals());
+        // sell 10000 tokens (~ 1 eth).
+        sellToken(seller, norm(10000));
+
+        // seller should get 0.9 ethers (1 ether minus 10% fee).
+        // contract should collect 1000 tokens (10% of 10000 tokens).
+        // 1000 as contract balance, 800 as rewards, 200 as marketing.
+        // add 1% tolerance to account for swap fee/slippage.
+        assertApproxEqRel(payable(seller).balance, 0.9 ether, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), norm(1000), 0.01e18);
+        assertApproxEqRel(token.rewardFeeAmount(), norm(800), 0.01e18);
+        assertApproxEqRel(token.marketingFeeAmount(), norm(200), 0.01e18);
     }
 }

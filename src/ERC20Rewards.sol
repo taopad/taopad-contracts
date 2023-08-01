@@ -7,49 +7,83 @@ import {IUniswapV2Factory} from "uniswap-v2-core/interfaces/IUniswapV2Factory.so
 import {IUniswapV2Router02} from "uniswap-v2-periphery/interfaces/IUniswapV2Router02.sol";
 
 contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
-    uint256 private constant precision = 1e18;
-
-    uint256 private constant feeDenominator = 10000;
-
-    address private marketingAddress;
+    // =========================================================================
+    // dependencies.
+    // =========================================================================
 
     IUniswapV2Router02 private constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
-    // rewards system.
-    uint256 private ETHRAcc;
-    uint256 private ETHRewardAmountAcc;
-    uint256 private ETHMarketingAmountAcc;
+    // =========================================================================
+    // rewards accounting.
+    // =========================================================================
 
-    uint256 private rewardFeeAmountAcc;
-    uint256 private marketingFeeAmountAcc;
+    // the amount of ETH per this token share.
+    uint256 private _ETHR;
 
-    // shares management of the token.
-    uint256 private totalShares;
+    // the amount of ETH distributed but not claimed yet.
+    uint256 private _ETHRewardAmount;
 
-    mapping(address => Share) private shareholders;
+    // total amount of ETH ever distributed.
+    uint256 private _ETHTotalRewarded;
+
+    // total shares of this token.
+    // (different from total supply because of excluded wallets).
+    uint256 private _totalShares;
+
+    // shareholders record.
+    // (gets updated after transfer from/to a non excluded address).
+    mapping(address => Share) private _shareholders;
 
     struct Share {
-        uint256 amount;
-        uint256 earned;
-        uint256 ETHRLast;
+        uint256 amount; // recorded balance before last transfer.
+        uint256 earned; // amount of ETH earned but not claimed yet.
+        uint256 ETHRLast; // _ETHR value of the last time ETH was earned.
     }
 
-    // public information.
+    // numerator multiplier so _ETHR does not get rounded to 0.
+    uint256 private constant precision = 1e18;
+
+    // =========================================================================
+    // marketing fee.
+    // =========================================================================
+
+    // only address allowed to view and withdraw marketing fees.
+    address private _marketingAddress;
+
+    // the amount of this token collected as marketing fee.
+    uint256 private _marketingFeeAmount;
+
+    // =========================================================================
+    // taxes setting.
+    // =========================================================================
+
+    // bps denominator.
+    uint256 private constant feeDenominator = 10000;
+
+    // buy taxes bps.
     uint256 public buyRewardFee = 800;
     uint256 public buyMarketingFee = 200;
     uint256 public buyTotalFee = buyRewardFee + buyMarketingFee;
 
+    // sell taxes bps.
     uint256 public sellRewardFee = 800;
     uint256 public sellMarketingFee = 200;
     uint256 public sellTotalFee = sellRewardFee + sellMarketingFee;
 
-    uint256 public ETHTotalRewarded;
-
+    // amm pair addresses the tranfers from/to are taxed.
+    // (populated with WETH/this token pair address in the constructor).
     mapping(address => bool) public ammPairs;
+
+    // addresses not receiving rewards.
+    // (populated with this token address in the constructor).
     mapping(address => bool) public excludedFromRewards;
 
-    // taxes are not enabled from the start for initial liq.
+    // taxes are not enabled from the start for initial liq deposit.
     bool public taxesEnabled;
+
+    // =========================================================================
+    // constructor.
+    // =========================================================================
 
     constructor(string memory name, string memory symbol, uint256 _totalSupply)
         AccessControlDefaultAdminRules(0, msg.sender)
@@ -58,65 +92,61 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         // mint total supply to deployer.
         _mint(msg.sender, _totalSupply * 10 ** decimals());
 
-        // deployer is original marketing fee receiver.
-        marketingAddress = msg.sender;
-
         // exclude this contract from rewards.
         _excludeFromRewards(address(this));
 
-        // create this pair and register it.
-        IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
+        // create an amm pair with WETH.
+        _createAmmPairWith(router.WETH());
 
-        address pair = factory.createPair(router.WETH(), address(this));
-
-        _addAmmPair(pair);
+        // set deployer as original marketing address.
+        _marketingAddress = msg.sender;
     }
 
-    function rewardFeeAmount() internal view returns (uint256) {
-        return (balanceOf(address(this)) * rewardFeeAmountAcc) / (rewardFeeAmountAcc + marketingFeeAmountAcc);
+    // =========================================================================
+    // exposed view functions.
+    // =========================================================================
+
+    function rewardFeeAmount() external view returns (uint256) {
+        return _rewardFeeAmount();
     }
 
-    function rewardFeeAmount(Share memory share) internal view returns (uint256) {
-        return (rewardFeeAmount() * share.amount) / totalShares;
+    function rewardFeeAmount(address addr) external view returns (uint256) {
+        return _rewardFeeAmount(_shareholders[addr]);
     }
 
     function pendingRewards(address addr) external view returns (uint256) {
-        return _pendingRewards(shareholders[addr]);
+        return _pendingRewards(_shareholders[addr]);
     }
 
+    function totalRewarded() external view returns (uint256) {
+        return _ETHTotalRewarded;
+    }
+
+    // =========================================================================
+    // exposed user functions.
+    // =========================================================================
+
     function claim() external {
-        Share storage share = shareholders[msg.sender];
+        Share storage share = _shareholders[msg.sender];
 
         uint256 pending = _pendingRewards(share);
 
         if (pending == 0) return;
 
         share.earned = 0;
-        share.ETHRLast = ETHRAcc;
-        ETHRewardAmountAcc -= pending;
+        share.ETHRLast = _ETHR;
+        _ETHRewardAmount -= pending;
 
         payable(msg.sender).transfer(pending);
-    }
-
-    function marketingPendingRewards() external view returns (uint256) {
-        require(msg.sender == marketingAddress, "sender must be marketing address");
-
-        return ETHMarketingAmountAcc;
-    }
-
-    function withdrawMarketing() external {
-        require(msg.sender == marketingAddress, "sender must be marketing address");
-
-        uint256 amount = ETHMarketingAmountAcc;
-
-        ETHMarketingAmountAcc = 0;
-
-        payable(marketingAddress).transfer(amount);
     }
 
     function distribute() external {
         _distribute();
     }
+
+    // =========================================================================
+    // exposed admin functions.
+    // =========================================================================
 
     function enableTaxes() external onlyRole(DEFAULT_ADMIN_ROLE) {
         taxesEnabled = true;
@@ -126,113 +156,235 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         taxesEnabled = false;
     }
 
-    function _excludeFromRewards(address addr) internal {
-        excludedFromRewards[addr] = true;
-    }
-
-    function _addAmmPair(address addr) internal {
-        ammPairs[addr] = true;
+    function excludeFromRewards(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _excludeFromRewards(addr);
     }
 
-    function _transfer(address from, address to, uint256 amount) internal override {
-        // get whether it is a buy/sell that should be taxed.
-        bool _isSelf = address(this) == from || address(this) == to;
-        bool _isTaxedBuy = taxesEnabled && !_isSelf && ammPairs[from];
-        bool _isTaxedSell = taxesEnabled && !_isSelf && ammPairs[to];
-
-        // compute the fees.
-        uint256 _rewardFee = (_isTaxedBuy ? buyRewardFee : 0) + (_isTaxedSell ? sellRewardFee : 0);
-        uint256 _marketingFee = (_isTaxedBuy ? buyMarketingFee : 0) + (_isTaxedSell ? sellMarketingFee : 0);
-
-        // compute the fee amount
-        uint256 _rewardFeeAmount = (amount * _rewardFee) / feeDenominator;
-        uint256 _marketingFeeAmount = (amount * _marketingFee) / feeDenominator;
-        uint256 _totalFeeAmount = _rewardFeeAmount + _marketingFeeAmount;
-
-        // accumulates total reward and marketing fee amount.
-        if (_rewardFeeAmount > 0) rewardFeeAmountAcc += _rewardFeeAmount;
-        if (_marketingFeeAmount > 0) marketingFeeAmountAcc += _marketingFeeAmount;
-
-        super._transfer(from, to, amount - _totalFeeAmount);
-
-        // transfer the total fee amount to this contract.
-        if (_totalFeeAmount > 0) {
-            super._transfer(from, address(this), _totalFeeAmount);
-        }
-
-        _updateShare(from);
-        _updateShare(to);
+    function createAmmPairWith(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _createAmmPairWith(addr);
     }
 
-    function _updateShare(address addr) internal {
-        // only reward addresses not excluded from rewards.
-        if (excludedFromRewards[addr]) return;
-
-        // compute how much shareholder earned since last update.
-        Share storage share = shareholders[addr];
-
-        uint256 balance = balanceOf(addr);
-        uint256 originalShareAmount = share.amount;
-        uint256 pending = _pendingRewards(share);
-
-        // update shareholder data.
-        share.amount = balance;
-        share.earned = pending;
-        share.ETHRLast = ETHRAcc;
-
-        // update total shares.
-        totalShares = totalShares - originalShareAmount + balance;
+    function recordAmmPairWith(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _recordAmmPairWith(addr);
     }
 
+    function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(rewardFee + marketingFee <= 20000, "20% total buy fee max");
+
+        buyRewardFee = rewardFee;
+        buyMarketingFee = marketingFee;
+        buyTotalFee = rewardFee + marketingFee;
+    }
+
+    function setSellFee(uint256 rewardFee, uint256 marketingFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(rewardFee + marketingFee <= 20000, "20% total sell fee max");
+
+        sellRewardFee = rewardFee;
+        sellMarketingFee = marketingFee;
+        sellTotalFee = rewardFee + marketingFee;
+    }
+
+    // =========================================================================
+    // exposed marketing functions.
+    // =========================================================================
+
+    function marketingFeeAmount() external view returns (uint256) {
+        require(msg.sender == _marketingAddress, "sender must be marketing address");
+
+        return _marketingFeeAmount;
+    }
+
+    function withdrawMarketing() external {
+        require(msg.sender == _marketingAddress, "sender must be marketing address");
+
+        uint256 amount = _marketingFeeAmount;
+
+        _marketingFeeAmount = 0;
+
+        transfer(msg.sender, amount);
+    }
+
+    function setMarketingAddress() external {
+        require(msg.sender == _marketingAddress, "sender must be marketing address");
+
+        _marketingAddress = msg.sender;
+    }
+
+    // =========================================================================
+    // internal functions.
+    // =========================================================================
+
+    /**
+     * compute the reward fee amount.
+     *
+     * it is the balance of this contract minus the fee collected for marketing.
+     */
+    function _rewardFeeAmount() internal view returns (uint256) {
+        return balanceOf(address(this)) - _marketingFeeAmount;
+    }
+
+    /**
+     * compute the reward fee amount of the given share.
+     */
+    function _rewardFeeAmount(Share memory share) internal view returns (uint256) {
+        return (_rewardFeeAmount() * share.amount) / _totalShares;
+    }
+
+    /**
+     * compute the pending rewards of the given share.
+     *
+     * the rewards earned since the last transfer are added to the already
+     * earned rewards.
+     */
     function _pendingRewards(Share memory share) internal view returns (uint256) {
-        uint256 RDiff = ETHRAcc - share.ETHRLast;
+        uint256 RDiff = _ETHR - share.ETHRLast;
         uint256 earned = (share.amount * RDiff) / precision;
 
         return share.earned + earned;
     }
 
+    /**
+     * Override the transfer method in order to take fee when transfer is from/to
+     * a registered amm pair.
+     *
+     * - taxes must be enabled
+     * - transfers from/to this contract are not taxed
+     * - marketing fees are collected here
+     * - taxes are sent to this very contract for later distribution
+     * - updates the shares of both the from and to addresses
+     */
+    function _transfer(address from, address to, uint256 amount) internal override {
+        // get whether it is a buy/sell that should be taxed.
+        bool isSelf = address(this) == from || address(this) == to;
+        bool isTaxedBuy = taxesEnabled && !isSelf && ammPairs[from];
+        bool isTaxedSell = taxesEnabled && !isSelf && ammPairs[to];
+
+        // compute the fees.
+        uint256 rewardFee = (isTaxedBuy ? buyRewardFee : 0) + (isTaxedSell ? sellRewardFee : 0);
+        uint256 marketingFee = (isTaxedBuy ? buyMarketingFee : 0) + (isTaxedSell ? sellMarketingFee : 0);
+
+        // compute the fee amount.
+        uint256 transferRewardFeeAmount = (amount * rewardFee) / feeDenominator;
+        uint256 transferMarketingFeeAmount = (amount * marketingFee) / feeDenominator;
+        uint256 transferTotalFeeAmount = transferRewardFeeAmount + transferMarketingFeeAmount;
+
+        // accumulates the marketing fee amount.
+        if (transferMarketingFeeAmount > 0) {
+            _marketingFeeAmount += transferMarketingFeeAmount;
+        }
+
+        // actually transfer the tokens minus the fee.
+        super._transfer(from, to, amount - transferTotalFeeAmount);
+
+        // transfer the total fee amount to this contract.
+        if (transferTotalFeeAmount > 0) {
+            super._transfer(from, address(this), transferTotalFeeAmount);
+        }
+
+        // updates shareholders values.
+        _updateShare(from);
+        _updateShare(to);
+    }
+
+    /**
+     * Update the total shares and the shares of the given address if it is not
+     * excluded from rewards.
+     */
+    function _updateShare(address addr) internal {
+        if (excludedFromRewards[addr]) return;
+
+        // get the shareholder pending rewards.
+        Share storage share = _shareholders[addr];
+
+        uint256 pending = _pendingRewards(share);
+
+        // update total shares and this shareholder data.
+        uint256 balance = balanceOf(addr);
+
+        _totalShares = _totalShares - share.amount + balance;
+
+        share.amount = balance;
+        share.earned = pending;
+        share.ETHRLast = _ETHR;
+    }
+
+    /**
+     * distribute balance - accumulated marketing amount by swapping it to ETH.
+     *
+     * if ETH has been sent to the contract by mistake it gets distributed as
+     * regular rewards.
+     */
     function _distribute() internal {
-        // get the contract balance.
-        uint256 balance = balanceOf(address(this));
+        // get the amount to distribute.
+        uint256 amount = _rewardFeeAmount();
 
         // nothing happen when nothing to distribute.
-        if (balance == 0) return;
+        if (amount == 0) return;
 
-        // approve router to spend stored tokens.
-        _approve(address(this), address(router), balance);
+        // approve router to spend tokens.
+        _approve(address(this), address(router), amount);
 
-        // swapback the whole balance of this contract to eth.
+        // swapback the whole amount to eth.
         address[] memory path = new address[](2);
         path[0] = address(this);
         path[1] = router.WETH();
 
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(balance, 0, path, address(this), block.timestamp);
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(amount, 0, path, address(this), block.timestamp);
 
-        // just ensure to not distribute if no shares or no fee yet.
+        // just ensure to not distribute if no shares.
         // in this case ETH is accumulated for next distribution.
-        uint256 _totalShares = totalShares;
-        uint256 _rewardFeeAmountAcc = rewardFeeAmountAcc;
-        uint256 _totalFeeAmountAcc = _rewardFeeAmountAcc + marketingFeeAmountAcc;
+        uint256 totalShares = _totalShares;
 
-        if (_totalShares == 0) return;
-        if (_totalFeeAmountAcc == 0) return;
+        if (totalShares == 0) return;
 
-        // compute the eth to distribute = ETH balance - current pending rewards.
+        // compute the eth to distribute:
+        // ETH balance (including newly swapped eth) - current reward amount (current amount remaining to distribute).
+        // if someone sent eth to the contract it gets distributed as regular rewards.
         uint256 ETHBalance = address(this).balance;
-        uint256 ETHToDistribute = ETHBalance - ETHRewardAmountAcc - ETHMarketingAmountAcc;
+        uint256 ETHToDistribute = ETHBalance - _ETHRewardAmount;
 
-        // accumulate ETH rewards according to the amount of fee accumulated.
-        uint256 ETHRewardAmount = (ETHToDistribute * _rewardFeeAmountAcc) / _totalFeeAmountAcc;
+        // update the distribution values.
+        _ETHR += (ETHToDistribute * precision) / totalShares;
+        _ETHRewardAmount += ETHToDistribute;
+        _ETHTotalRewarded += ETHToDistribute;
+    }
 
-        ETHRewardAmountAcc += ETHRewardAmount;
-        ETHMarketingAmountAcc += (ETHToDistribute - ETHRewardAmount);
-        ETHRAcc += (ETHRewardAmount * precision) / _totalShares;
-        ETHTotalRewarded += ETHRewardAmount;
+    /**
+     * Exclude the given wallet from rewards.
+     *
+     * What if it is a contract registered after getting rewards?
+     * Should something be done with the pending rewards?
+     */
+    function _excludeFromRewards(address addr) internal {
+        excludedFromRewards[addr] = true;
+    }
 
-        // reset the accumulated fee.
-        rewardFeeAmountAcc = 0;
-        marketingFeeAmountAcc = 0;
+    /**
+     * Create an amm pair with the given token address, register it as an
+     * amm and exclude it from rewards.
+     */
+    function _createAmmPairWith(address addr) internal {
+        IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
+
+        address pair = factory.createPair(addr, address(this));
+
+        ammPairs[pair] = true;
+
+        _excludeFromRewards(pair);
+    }
+
+    /**
+     * Record an existing amm pair with the given token address, register it
+     * as an amm and exclude it from rewards.
+     */
+    function _recordAmmPairWith(address addr) internal {
+        IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
+
+        address pair = factory.getPair(addr, address(this));
+
+        ammPairs[pair] = true;
+
+        _excludeFromRewards(pair);
     }
 
     receive() external payable {}
