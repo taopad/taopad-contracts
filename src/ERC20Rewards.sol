@@ -124,6 +124,10 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         return _approxValueAs(router.WETH(), _rewardFeeAmount(_shareholders[addr]));
     }
 
+    function extraETHAmount() external view returns (uint256) {
+        return _extraETHAmount();
+    }
+
     function pendingRewards(address addr) external view returns (uint256) {
         return _pendingRewards(_shareholders[addr]);
     }
@@ -150,8 +154,20 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         payable(msg.sender).transfer(pending);
     }
 
-    function distribute() external {
-        _distributeFeeAmount();
+    function distributeRewards() external {
+        _distributeRewards();
+    }
+
+    function liquifyRewards() external {
+        _liquifyRewards();
+    }
+
+    function burnRewards() external {
+        _burnRewards();
+    }
+
+    function buybackExtra() external {
+        _buybackExtra();
     }
 
     // =========================================================================
@@ -194,13 +210,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         sellTotalFee = rewardFee + marketingFee;
     }
 
-    function sweepETH() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 amount = payable(address(this)).balance - _ETHRewardAmount;
-
-        payable(msg.sender).transfer(amount);
-    }
-
-    function sweepERC20(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function sweep(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(address(this) != addr, "cant sweep reward token");
 
         IERC20 token = IERC20(addr);
@@ -254,6 +264,15 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
      */
     function _rewardFeeAmount(Share memory share) internal view returns (uint256) {
         return (_rewardFeeAmount() * share.amount) / _totalShares;
+    }
+
+    /**
+     * return the amount of ETH manually sent to this contract.
+     *
+     * this is the ETH balance not part of a reward distribution.
+     */
+    function _extraETHAmount() internal view returns (uint256) {
+        return payable(address(this)).balance - _ETHRewardAmount;
     }
 
     /**
@@ -353,7 +372,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     /**
      * distribute fee amount as rewards by swapping it to ETH.
      */
-    function _distributeFeeAmount() internal {
+    function _distributeRewards() internal {
         // ensure to not distribute if no fee collected or no shares.
         uint256 amountToSwap = _rewardFeeAmount();
         uint256 totalShares = _totalShares;
@@ -375,7 +394,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
      *
      * LP tokens are minted to the sender.
      */
-    function _liquifyFeeAmount() internal {
+    function _liquifyRewards() internal {
         // ensure to not liquify if no fee collected.
         uint256 amountToLP = _rewardFeeAmount();
 
@@ -395,7 +414,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     /**
      * burn the fee amount.
      */
-    function _burnFeeAmount() internal {
+    function _burnRewards() internal {
         // ensure to not burn if no fee collected.
         uint256 amountToBurn = _rewardFeeAmount();
 
@@ -403,6 +422,25 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
 
         // actually burn.
         _burn(address(this), amountToBurn);
+    }
+
+    /**
+     * buyback token using the ETH manually sent to this contract.
+     */
+    function _buybackExtra() internal {
+        // ensure to not buyback if no extra ETH.
+        uint256 amountToBuyback = _extraETHAmount();
+
+        if (amountToBuyback == 0) return;
+
+        // buyback the whole amount for this token.
+        address[] memory path = new address[](2);
+        path[0] = router.WETH();
+        path[1] = address(this);
+
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: amountToBuyback}(
+            0, path, address(this), block.timestamp
+        );
     }
 
     /**
