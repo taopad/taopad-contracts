@@ -76,14 +76,29 @@ contract SwapTest is Test {
         return amount * 10 ** token.decimals();
     }
 
-    function testNoTaxCollectedWhenTaxesAreNotEnabled() public {
+    // =========================================================================
+    // tests.
+    // =========================================================================
+
+    function testNoFeeCollectedWhenTaxesAreNotEnabled() public {
+        address buyer = vm.addr(1);
+
+        vm.label(buyer, "Buyer");
+
+        // give 1 ether to buyer.
+        vm.deal(buyer, 1 ether);
+
+        // do not enable taxes.
         addLiquidity(1000 ether, token.totalSupply());
 
+        // buy 10000 tokens (~ 1 eth).
+        buyToken(buyer, 1 ether);
+
+        // no fee should be collected.
         assertEq(token.balanceOf(address(token)), 0);
     }
 
     function testBuyAreTaxed() public {
-        // setup buyer.
         address buyer = vm.addr(1);
 
         vm.label(buyer, "Buyer");
@@ -134,5 +149,17 @@ contract SwapTest is Test {
         assertApproxEqRel(token.balanceOf(address(token)), norm(1000), 0.01e18);
         assertApproxEqRel(token.rewardFeeAmount(), norm(800), 0.01e18);
         assertApproxEqRel(token.marketingFeeAmount(), norm(200), 0.01e18);
+    }
+
+    function testApproxPriceCanBeComputed() public {
+        // sent tokens to the contract (balance = reward fee amount)
+        token.transfer(address(token), norm(1e6));
+
+        // add liq (1eth = 10 000 tokens).
+        addLiquidity(900 ether, token.totalSupply() - norm(1e6));
+
+        // contract holds 1 million tokens so it should be worth 100 ethers.
+        assertEq(token.rewardFeeAmount(), norm(1e6));
+        assertEq(token.approxRewardFeeAmountAsETH(), 100 ether);
     }
 }

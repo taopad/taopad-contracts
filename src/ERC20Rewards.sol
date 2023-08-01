@@ -3,6 +3,7 @@ pragma solidity ^0.8.17;
 
 import {AccessControlDefaultAdminRules} from "openzeppelin/access/AccessControlDefaultAdminRules.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
+import {IUniswapV2Pair} from "uniswap-v2-core/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "uniswap-v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "uniswap-v2-periphery/interfaces/IUniswapV2Router02.sol";
 
@@ -112,6 +113,14 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
 
     function rewardFeeAmount(address addr) external view returns (uint256) {
         return _rewardFeeAmount(_shareholders[addr]);
+    }
+
+    function approxRewardFeeAmountAsETH() external view returns (uint256) {
+        return _approxValueAs(router.WETH(), _rewardFeeAmount());
+    }
+
+    function approxRewardFeeAmountAsETH(address addr) external view returns (uint256) {
+        return _approxValueAs(router.WETH(), _rewardFeeAmount(_shareholders[addr]));
     }
 
     function pendingRewards(address addr) external view returns (uint256) {
@@ -241,6 +250,22 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         uint256 earned = (share.amount * RDiff) / precision;
 
         return share.earned + earned;
+    }
+
+    /**
+     * compute the value of given amount in term of given token address.
+     */
+    function _approxValueAs(address addr, uint256 amount) internal view returns (uint256) {
+        IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
+
+        IUniswapV2Pair pair = IUniswapV2Pair(factory.getPair(addr, address(this)));
+
+        (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
+
+        uint256 tokenReserve = address(this) == pair.token0() ? reserve0 : reserve1;
+        uint256 otherReserve = address(this) == pair.token0() ? reserve1 : reserve0;
+
+        return (amount * otherReserve) / tokenReserve;
     }
 
     /**
