@@ -3,6 +3,7 @@ pragma solidity ^0.8.17;
 
 import {AccessControlDefaultAdminRules} from "openzeppelin/access/AccessControlDefaultAdminRules.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
+import {IERC20} from "openzeppelin/interfaces/IERC20.sol";
 import {IUniswapV2Pair} from "uniswap-v2-core/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "uniswap-v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "uniswap-v2-periphery/interfaces/IUniswapV2Router02.sol";
@@ -193,6 +194,22 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         sellTotalFee = rewardFee + marketingFee;
     }
 
+    function sweepETH() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 amount = payable(address(this)).balance - _ETHRewardAmount;
+
+        payable(msg.sender).transfer(amount);
+    }
+
+    function sweepERC20(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(address(this) != addr, "cant sweep reward token");
+
+        IERC20 token = IERC20(addr);
+
+        uint256 amount = token.balanceOf(address(this));
+
+        token.transfer(msg.sender, amount);
+    }
+
     // =========================================================================
     // exposed marketing functions.
     // =========================================================================
@@ -335,11 +352,6 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
 
     /**
      * distribute fee amount as rewards by swapping it to ETH.
-     *
-     * the fee amount is balance - marketing fee amount collected.
-     *
-     * if ETH has been sent to the contract it is considered as donation
-     * to the shareholders and is distributed as rewards.
      */
     function _distributeFeeAmount() internal {
         // ensure to not distribute if no fee collected or no shares.
@@ -350,13 +362,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         if (totalShares == 0) return;
 
         // swapback for eth.
-        _swapback(amountToSwap);
-
-        // compute the eth to distribute:
-        // ETH balance (including newly swapped eth) - reward amount (distributed amount not claimed yet).
-        // if someone sent eth to the contract it gets distributed like regular rewards.
-        uint256 ETHBalance = address(this).balance;
-        uint256 ETHToDistribute = ETHBalance - _ETHRewardAmount;
+        uint256 ETHToDistribute = _swapback(amountToSwap);
 
         // update the distribution values.
         _ETHR += (ETHToDistribute * precision) / totalShares;
@@ -380,11 +386,7 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         uint256 secondHalfToken = amountToLP - firstHalfToken;
 
         // swapback second half.
-        uint256 originalBalance = payable(address(this)).balance;
-
-        _swapback(secondHalfToken);
-
-        uint256 secondHalfETH = payable(address(this)).balance - originalBalance;
+        uint256 secondHalfETH = _swapback(secondHalfToken);
 
         // add liquidity by minting LP to sender.
         router.addLiquidityETH{value: secondHalfETH}(address(this), firstHalfToken, 0, 0, msg.sender, block.timestamp);
@@ -444,9 +446,12 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     /**
      * Sell the given amount of tokens for ETH.
      */
-    function _swapback(uint256 amount) internal {
+    function _swapback(uint256 amount) internal returns (uint256) {
         // approve router to spend tokens.
         _approve(address(this), address(router), amount);
+
+        // keep the original ETH balance to compute the swapped amount.
+        uint256 originalBalance = payable(address(this)).balance;
 
         // swapback the whole amount to eth.
         address[] memory path = new address[](2);
@@ -454,6 +459,9 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         path[1] = router.WETH();
 
         router.swapExactTokensForETHSupportingFeeOnTransferTokens(amount, 0, path, address(this), block.timestamp);
+
+        // return the swapped amount.
+        return payable(address(this)).balance - originalBalance;
     }
 
     receive() external payable {}
