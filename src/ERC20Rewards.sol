@@ -15,15 +15,15 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
 
     IUniswapV2Router02 private constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
-    // amount of accumulated fees since last swapback.
-    uint256 private rewardFeeAmountAcc;
-    uint256 private marketingFeeAmountAcc;
-
     // rewards system.
     uint256 private ETHRAcc;
     uint256 private ETHRewardAmountAcc;
     uint256 private ETHMarketingAmountAcc;
 
+    uint256 private rewardFeeAmountAcc;
+    uint256 private marketingFeeAmountAcc;
+
+    // shares management of the token.
     uint256 private totalShares;
 
     mapping(address => Share) private shareholders;
@@ -35,20 +35,21 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
     }
 
     // public information.
-    uint256 public buyRewardFee = 600;
+    uint256 public buyRewardFee = 800;
     uint256 public buyMarketingFee = 200;
     uint256 public buyTotalFee = buyRewardFee + buyMarketingFee;
 
-    uint256 public sellRewardFee = 600;
+    uint256 public sellRewardFee = 800;
     uint256 public sellMarketingFee = 200;
     uint256 public sellTotalFee = sellRewardFee + sellMarketingFee;
 
     uint256 public ETHTotalRewarded;
 
-    uint256 public swapbackThreshold;
-
     mapping(address => bool) public ammPairs;
     mapping(address => bool) public excludedFromRewards;
+
+    // taxes are not enabled from the start for initial liq.
+    bool public taxesEnabled;
 
     constructor(string memory name, string memory symbol, uint256 _totalSupply)
         AccessControlDefaultAdminRules(0, msg.sender)
@@ -71,8 +72,16 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         _addAmmPair(pair);
     }
 
-    function pendingRewards() external view returns (uint256) {
-        return _pendingRewards(shareholders[msg.sender]);
+    function rewardFeeAmount() internal view returns (uint256) {
+        return (balanceOf(address(this)) * rewardFeeAmountAcc) / (rewardFeeAmountAcc + marketingFeeAmountAcc);
+    }
+
+    function rewardFeeAmount(Share memory share) internal view returns (uint256) {
+        return (rewardFeeAmount() * share.amount) / totalShares;
+    }
+
+    function pendingRewards(address addr) external view returns (uint256) {
+        return _pendingRewards(shareholders[addr]);
     }
 
     function claim() external {
@@ -86,7 +95,6 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         share.ETHRLast = ETHRAcc;
         ETHRewardAmountAcc -= pending;
 
-        // should so a swap here.
         payable(msg.sender).transfer(pending);
     }
 
@@ -106,29 +114,16 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         payable(marketingAddress).transfer(amount);
     }
 
-    function transferFrom(address from, address to, uint256 amount) public override returns (bool) {
-        // get whether it is a buy/sell that should be taxed.
-        bool isSelf = address(this) == from || address(this) == to;
-        bool isTaxedBuy = isSelf && ammPairs[from];
-        bool isTaxedSell = isSelf && ammPairs[to];
+    function distribute() external {
+        _distribute();
+    }
 
-        // compute the fees.
-        uint256 rewardFee = (isTaxedBuy ? buyRewardFee : 0) + (isTaxedSell ? sellRewardFee : 0);
-        uint256 marketingFee = (isTaxedBuy ? buyMarketingFee : 0) + (isTaxedSell ? sellMarketingFee : 0);
+    function enableTaxes() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        taxesEnabled = true;
+    }
 
-        // compute the fee amount
-        uint256 rewardFeeAmount = (amount * rewardFee) / feeDenominator;
-        uint256 marketingFeeAmount = (amount * marketingFee) / feeDenominator;
-        uint256 totalFeeAmount = rewardFeeAmount + marketingFeeAmount;
-
-        // accumulates total reward and marketing fee amount.
-        if (rewardFeeAmount > 0) rewardFeeAmountAcc += rewardFeeAmount;
-        if (marketingFeeAmount > 0) marketingFeeAmountAcc += marketingFeeAmount;
-
-        // transfer the total fee amount to this contract.
-        if (totalFeeAmount > 0) _transfer(from, address(this), totalFeeAmount);
-
-        return super.transferFrom(from, to, amount - totalFeeAmount);
+    function disableTaxes() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        taxesEnabled = false;
     }
 
     function _excludeFromRewards(address addr) internal {
@@ -140,54 +135,34 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         _excludeFromRewards(addr);
     }
 
-    function _afterTokenTransfer(address from, address to, uint256) internal virtual override {
-        // do nothing on minting or burning.
-        if (from == address(0)) return;
-        if (to == address(0)) return;
+    function _transfer(address from, address to, uint256 amount) internal override {
+        // get whether it is a buy/sell that should be taxed.
+        bool _isSelf = address(this) == from || address(this) == to;
+        bool _isTaxedBuy = taxesEnabled && !_isSelf && ammPairs[from];
+        bool _isTaxedSell = taxesEnabled && !_isSelf && ammPairs[to];
 
-        // preform swpaback and update sender/receiver shares.
-        _swapBack();
+        // compute the fees.
+        uint256 _rewardFee = (_isTaxedBuy ? buyRewardFee : 0) + (_isTaxedSell ? sellRewardFee : 0);
+        uint256 _marketingFee = (_isTaxedBuy ? buyMarketingFee : 0) + (_isTaxedSell ? sellMarketingFee : 0);
+
+        // compute the fee amount
+        uint256 _rewardFeeAmount = (amount * _rewardFee) / feeDenominator;
+        uint256 _marketingFeeAmount = (amount * _marketingFee) / feeDenominator;
+        uint256 _totalFeeAmount = _rewardFeeAmount + _marketingFeeAmount;
+
+        // accumulates total reward and marketing fee amount.
+        if (_rewardFeeAmount > 0) rewardFeeAmountAcc += _rewardFeeAmount;
+        if (_marketingFeeAmount > 0) marketingFeeAmountAcc += _marketingFeeAmount;
+
+        super._transfer(from, to, amount - _totalFeeAmount);
+
+        // transfer the total fee amount to this contract.
+        if (_totalFeeAmount > 0) {
+            super._transfer(from, address(this), _totalFeeAmount);
+        }
+
         _updateShare(from);
         _updateShare(to);
-    }
-
-    function _swapBack() internal {
-        // get the balance of this contract and swapback if needed.
-        uint256 balance = balanceOf(address(this));
-
-        if (balance < swapbackThreshold) return;
-
-        // swapback the whole amount held by this contract to eth.
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = router.WETH();
-
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(balance, 0, path, address(this), block.timestamp);
-
-        // if no shares yet we dont distribute anything.
-        if (totalShares == 0) return;
-
-        // if no fee accumulated we dont distribute (someone sent to the contract directly?)
-        uint256 totalFeeAmountAcc = rewardFeeAmountAcc + marketingFeeAmountAcc;
-
-        if (totalFeeAmountAcc == 0) return;
-
-        // compute the eth to distribute = ETH balance - current pending rewards.
-        uint256 ETHBalance = address(this).balance;
-        uint256 ETHTotalAmountAcc = ETHRewardAmountAcc + ETHMarketingAmountAcc;
-        uint256 ETHToDistribute = ETHBalance - ETHTotalAmountAcc;
-
-        // accumulate ETH rewards according to the amount of fee accumulated.
-        uint256 ETHRewardAmount = (ETHToDistribute * rewardFeeAmountAcc) / totalFeeAmountAcc;
-
-        ETHRewardAmountAcc += ETHRewardAmount;
-        ETHMarketingAmountAcc += ETHToDistribute - ETHRewardAmount;
-        ETHRAcc += (ETHRewardAmount * precision) / totalShares;
-        ETHTotalRewarded += ETHRewardAmount;
-
-        // reset the accumulated fee.
-        rewardFeeAmountAcc = 0;
-        marketingFeeAmountAcc = 0;
     }
 
     function _updateShare(address addr) internal {
@@ -215,6 +190,49 @@ contract ERC20Rewards is AccessControlDefaultAdminRules, ERC20 {
         uint256 earned = (share.amount * RDiff) / precision;
 
         return share.earned + earned;
+    }
+
+    function _distribute() internal {
+        // get the contract balance.
+        uint256 balance = balanceOf(address(this));
+
+        // nothing happen when nothing to distribute.
+        if (balance == 0) return;
+
+        // approve router to spend stored tokens.
+        _approve(address(this), address(router), balance);
+
+        // swapback the whole balance of this contract to eth.
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = router.WETH();
+
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(balance, 0, path, address(this), block.timestamp);
+
+        // just ensure to not distribute if no shares or no fee yet.
+        // in this case ETH is accumulated for next distribution.
+        uint256 _totalShares = totalShares;
+        uint256 _rewardFeeAmountAcc = rewardFeeAmountAcc;
+        uint256 _totalFeeAmountAcc = _rewardFeeAmountAcc + marketingFeeAmountAcc;
+
+        if (_totalShares == 0) return;
+        if (_totalFeeAmountAcc == 0) return;
+
+        // compute the eth to distribute = ETH balance - current pending rewards.
+        uint256 ETHBalance = address(this).balance;
+        uint256 ETHToDistribute = ETHBalance - ETHRewardAmountAcc - ETHMarketingAmountAcc;
+
+        // accumulate ETH rewards according to the amount of fee accumulated.
+        uint256 ETHRewardAmount = (ETHToDistribute * _rewardFeeAmountAcc) / _totalFeeAmountAcc;
+
+        ETHRewardAmountAcc += ETHRewardAmount;
+        ETHMarketingAmountAcc += (ETHToDistribute - ETHRewardAmount);
+        ETHRAcc += (ETHRewardAmount * precision) / _totalShares;
+        ETHTotalRewarded += ETHRewardAmount;
+
+        // reset the accumulated fee.
+        rewardFeeAmountAcc = 0;
+        marketingFeeAmountAcc = 0;
     }
 
     receive() external payable {}
