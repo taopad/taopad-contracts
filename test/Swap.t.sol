@@ -10,11 +10,8 @@ contract SwapTest is ERC20RewardsTest {
 
         vm.label(buyer, "Buyer");
 
-        // give 1 ether to buyer.
-        vm.deal(buyer, 1 ether);
-
         // add liq (1eth = 10 000 tokens) and enable taxes.
-        addLiquidity(1000 ether, token.totalSupply());
+        addLiquidity(address(this), 1000 ether, token.totalSupply());
 
         // buy 10000 tokens (~ 1 eth).
         buyToken(buyer, 1 ether);
@@ -34,12 +31,8 @@ contract SwapTest is ERC20RewardsTest {
 
         vm.label(seller, "Seller");
 
-        // send some of the supply to seller so he can sell later.
-        // (send 1 million so 9 million is put in liq)
-        token.transfer(seller, norm(1e6));
-
         // add liq (1eth = 10 000 tokens) and enabled taxes.
-        addLiquidity(900 ether, token.totalSupply() - norm(1e6));
+        addLiquidity(address(this), 900 ether, token.totalSupply() - norm(1e6));
 
         // sell 10000 tokens (~ 1 eth).
         sellToken(seller, norm(10000));
@@ -59,7 +52,7 @@ contract SwapTest is ERC20RewardsTest {
         token.transfer(address(token), norm(1e6));
 
         // add liq (1eth = 10 000 tokens).
-        addLiquidity(900 ether, token.totalSupply() - norm(1e6));
+        addLiquidity(address(this), 900 ether, token.totalSupply() - norm(1e6));
 
         // contract holds 1 million tokens so it should be worth 100 ethers.
         assertEq(token.currentRewards(), norm(1e6));
