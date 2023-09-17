@@ -176,7 +176,7 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
 
         require(amountToSwap > 0, "no reward to distribute");
         require(currentTotalShares > 0, "no one to distribute");
-        require(shareholders[msg.sender].lastBlockUpdate < block.number, "can't transfer and distribute");
+        require(shareholders[msg.sender].lastBlockUpdate < block.number, "transfer and distribute not allowed");
 
         uint256 swappedETH = _swapback(amountToSwap);
 
