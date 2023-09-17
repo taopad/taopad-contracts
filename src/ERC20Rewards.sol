@@ -76,6 +76,13 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     uint256 private _marketingFeeAmount;
 
     // =========================================================================
+    // Events.
+    // =========================================================================
+
+    event ClaimETH(address indexed addr, uint256 amount);
+    event ClaimERC20(address indexed addr, address token, uint256 amount);
+
+    // =========================================================================
     // constructor.
     // =========================================================================
 
@@ -137,17 +144,23 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     // =========================================================================
 
     function claim() external nonReentrant {
-        Share storage share = shareholders[msg.sender];
+        uint256 earnedETH = _claim(msg.sender);
 
-        _earn(share);
+        if (earnedETH == 0) return;
 
-        uint256 earned = share.earned;
+        payable(msg.sender).transfer(earnedETH);
 
-        if (earned == 0) return;
+        emit ClaimETH(msg.sender, earnedETH);
+    }
 
-        share.earned = 0;
+    function claim(address token) external nonReentrant {
+        uint256 earnedETH = _claim(msg.sender);
 
-        payable(msg.sender).transfer(earned);
+        if (earnedETH == 0) return;
+
+        uint256 earnedERC20 = _swapETHToERC20(earnedETH, token, msg.sender);
+
+        emit ClaimERC20(msg.sender, token, earnedERC20);
     }
 
     function distribute() external {
@@ -334,6 +347,21 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     }
 
     /**
+     * Claim the ETH rewards of user and returns the amount.
+     */
+    function _claim(address addr) private returns (uint256) {
+        Share storage share = shareholders[addr];
+
+        _earn(share);
+
+        uint256 earned = share.earned;
+
+        share.earned = 0;
+
+        return earned;
+    }
+
+    /**
      * Exclude the given address from rewards.
      *
      * Earn its rewards then remove it from total shares.
@@ -389,7 +417,7 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     }
 
     /**
-     * Sell the given amount of tokens for ETH.
+     * Sell the given amount of tokens for ETH and return the amount received.
      */
     function _swapback(uint256 amount) private returns (uint256) {
         // approve router to spend tokens.
@@ -407,6 +435,23 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
 
         // return the received amount.
         return payable(address(this)).balance - originalBalance;
+    }
+
+    /**
+     * Sell the given amount of ETH for given ERC20 address to a given address and returns
+     * the amount it received.
+     */
+    function _swapETHToERC20(uint256 ETHAmount, address token, address to) private returns (uint256) {
+        uint256 originalBalance = IERC20(token).balanceOf(to);
+
+        // swapback the given ETHAmount to token.
+        address[] memory path = new address[](2);
+        path[0] = router.WETH();
+        path[1] = token;
+
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: ETHAmount}(0, path, to, block.timestamp);
+
+        return IERC20(token).balanceOf(to) - originalBalance;
     }
 
     /**
