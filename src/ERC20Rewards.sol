@@ -69,6 +69,16 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     mapping(address => bool) public excludedFromRewards;
 
     // =========================================================================
+    // claims.
+    // =========================================================================
+
+    // total claimed EHT.
+    uint256 public totalClaimedETH;
+
+    // total claimed ERC20.
+    mapping(address => uint256) public totalClaimedERC20;
+
+    // =========================================================================
     // marketing.
     // =========================================================================
 
@@ -80,7 +90,7 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     // =========================================================================
 
     event ClaimETH(address indexed addr, uint256 amount);
-    event ClaimERC20(address indexed addr, address token, uint256 amount);
+    event ClaimERC20(address indexed addr, address indexed token, uint256 amount);
 
     // =========================================================================
     // constructor.
@@ -144,23 +154,27 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     // =========================================================================
 
     function claim() external nonReentrant {
-        uint256 earnedETH = _claim(msg.sender);
+        uint256 claimedETH = _claim(msg.sender);
 
-        if (earnedETH == 0) return;
+        if (claimedETH == 0) return;
 
-        payable(msg.sender).transfer(earnedETH);
+        payable(msg.sender).transfer(claimedETH);
 
-        emit ClaimETH(msg.sender, earnedETH);
+        totalClaimedETH += claimedETH;
+
+        emit ClaimETH(msg.sender, claimedETH);
     }
 
     function claim(address token) external nonReentrant {
-        uint256 earnedETH = _claim(msg.sender);
+        uint256 claimedETH = _claim(msg.sender);
 
-        if (earnedETH == 0) return;
+        if (claimedETH == 0) return;
 
-        uint256 earnedERC20 = _swapETHToERC20(earnedETH, token, msg.sender);
+        uint256 claimedERC20 = _swapETHToERC20(claimedETH, token, msg.sender);
 
-        emit ClaimERC20(msg.sender, token, earnedERC20);
+        totalClaimedERC20[token] += claimedERC20;
+
+        emit ClaimERC20(msg.sender, token, claimedERC20);
     }
 
     function distribute() external {
