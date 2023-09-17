@@ -41,6 +41,7 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         uint256 amount; // recorded balance after last transfer.
         uint256 earned; // amount of ETH earned but not claimed yet.
         uint256 ETHRLast; // ETHR value of the last time ETH was earned.
+        uint256 lastBlockUpdate; // last block share was updated.
     }
 
     // =========================================================================
@@ -137,14 +138,6 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         return (currentRewards() * shareholders[addr].amount) / currentTotalShares;
     }
 
-    function currentRewardsAsETHApprox() external view returns (uint256) {
-        return _approxValueAs(router.WETH(), currentRewards());
-    }
-
-    function currentRewardsAsETHApprox(address addr) external view returns (uint256) {
-        return _approxValueAs(router.WETH(), currentRewards(addr));
-    }
-
     function pendingRewards(address addr) external view returns (uint256) {
         return _pendingRewards(shareholders[addr]);
     }
@@ -165,12 +158,12 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         emit ClaimETH(msg.sender, claimedETH);
     }
 
-    function claim(address token) external nonReentrant {
+    function claim(address token, uint256 minAmountOut) external nonReentrant {
         uint256 claimedETH = _claim(msg.sender);
 
         if (claimedETH == 0) return;
 
-        uint256 claimedERC20 = _swapETHToERC20(claimedETH, token, msg.sender);
+        uint256 claimedERC20 = _swapETHToERC20(claimedETH, token, msg.sender, minAmountOut);
 
         totalClaimedERC20[token] += claimedERC20;
 
@@ -183,6 +176,7 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
 
         require(amountToSwap > 0, "no reward to distribute");
         require(currentTotalShares > 0, "no one to distribute");
+        require(shareholders[msg.sender].lastBlockUpdate < block.number, "can't transfer and distribute");
 
         uint256 swappedETH = _swapback(amountToSwap);
 
@@ -335,6 +329,7 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         totalShares = totalShares - share.amount + balance;
 
         share.amount = balance;
+        share.lastBlockUpdate = block.number;
     }
 
     /**
@@ -415,22 +410,6 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     }
 
     /**
-     * Compute the value of given amount of token in term of given token address.
-     */
-    function _approxValueAs(address addr, uint256 amount) private view returns (uint256) {
-        IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
-
-        IUniswapV2Pair pair = IUniswapV2Pair(factory.getPair(addr, address(this)));
-
-        (uint256 reserve0, uint256 reserve1,) = pair.getReserves();
-
-        uint256 tokenReserve = address(this) == pair.token0() ? reserve0 : reserve1;
-        uint256 otherReserve = address(this) == pair.token0() ? reserve1 : reserve0;
-
-        return (amount * otherReserve) / tokenReserve;
-    }
-
-    /**
      * Sell the given amount of tokens for ETH and return the amount received.
      */
     function _swapback(uint256 amount) private returns (uint256) {
@@ -455,7 +434,10 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
      * Sell the given amount of ETH for given ERC20 address to a given address and returns
      * the amount it received.
      */
-    function _swapETHToERC20(uint256 ETHAmount, address token, address to) private returns (uint256) {
+    function _swapETHToERC20(uint256 ETHAmount, address token, address to, uint256 minAmountOut)
+        private
+        returns (uint256)
+    {
         uint256 originalBalance = IERC20(token).balanceOf(to);
 
         // swapback the given ETHAmount to token.
@@ -463,7 +445,9 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         path[0] = router.WETH();
         path[1] = token;
 
-        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: ETHAmount}(0, path, to, block.timestamp);
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: ETHAmount}(
+            minAmountOut, path, to, block.timestamp
+        );
 
         return IERC20(token).balanceOf(to) - originalBalance;
     }

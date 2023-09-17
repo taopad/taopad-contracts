@@ -46,16 +46,4 @@ contract SwapTest is ERC20RewardsTest {
         assertApproxEqRel(token.currentRewards(), norm(800), 0.01e18);
         assertApproxEqRel(token.marketingFeeAmount(), norm(200), 0.01e18);
     }
-
-    function testApproxPriceCanBeComputed() public {
-        // sent tokens to the contract (balance = reward fee amount)
-        token.transfer(address(token), norm(1e6));
-
-        // add liq (1eth = 10 000 tokens).
-        addLiquidity(address(this), 900 ether, token.totalSupply() - norm(1e6));
-
-        // contract holds 1 million tokens so it should be worth 100 ethers.
-        assertEq(token.currentRewards(), norm(1e6));
-        assertEq(token.currentRewardsAsETHApprox(), 100 ether);
-    }
 }
