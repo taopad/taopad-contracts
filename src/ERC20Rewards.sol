@@ -311,13 +311,16 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     function withdrawMarketing() external {
-        uint256 amount = marketingAmount;
+        require(msg.sender == marketingWallet, "sender is not marketing wallet");
 
-        marketingAmount = 0;
+        _withdrawMarketing(marketingAmount);
+    }
 
-        uint256 amountOut = _swapback(amount);
+    function withdrawMarketing(uint256 amountToWithdraw) external {
+        require(msg.sender == marketingWallet, "sender is not marketing wallet");
+        require(amountToWithdraw <= marketingAmount, "amount must be <= currentMarketingAmount()");
 
-        payable(marketingWallet).transfer(amountOut);
+        _withdrawMarketing(amountToWithdraw);
     }
 
     // =========================================================================
@@ -500,6 +503,17 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         share.earned = 0;
 
         return earned;
+    }
+
+    /**
+     * withdraw given amount of collected marketing tokens.
+     */
+    function _withdrawMarketing(uint256 amountToWithdraw) private {
+        marketingAmount = 0;
+
+        uint256 amountOut = _swapback(amountToWithdraw);
+
+        payable(marketingWallet).transfer(amountOut);
     }
 
     /**
