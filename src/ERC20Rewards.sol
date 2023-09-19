@@ -330,7 +330,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      *
      * - transfers from/to this contract are not taxed.
      * - transfers from/to uniswap router are not taxed.
-     * - wallets buying in a deadblock are blacklisted and transfer reverts.
+     * - wallets buying in a deadblock are blacklisted and cant transfer tokens.
      * - prevent receiving address to get more than max wallet.
      * - marketing fees are collected here.
      * - taxes are sent to this very contract for later distribution.
@@ -338,6 +338,9 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      */
 
     function _transfer(address from, address to, uint256 amount) internal override {
+        // blacklisted addresses cant transfer tokens.
+        require(!isBlacklisted[from], "blacklisted");
+
         // get the addresses excluded from taxes.
         bool isSelf = address(this) == from || address(this) == to;
         bool isRouter = address(router) == from || address(router) == to;
@@ -360,7 +363,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         uint256 transferActualAmount = amount - transferTotalFeeAmount;
 
         // prevents from bad behavior.
-        if (!isExcluded) _preventSniper(from, to);
+        if (!isExcluded) _preventSnipers(from, to);
         if (!isExcluded) _preventMaxWallet(to, transferActualAmount);
 
         // transfer the actual amount.
@@ -381,14 +384,12 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         _updateShare(to);
     }
 
-    function _preventSniper(address from, address to) private {
+    function _preventSnipers(address from, address to) private {
         if (block.number > startBlock + deadBlocks) return;
 
         if (pairs[from]) {
             isBlacklisted[to] = true;
         }
-
-        require(!isBlacklisted[to], "blacklisted");
     }
 
     function _preventMaxWallet(address to, uint256 amount) private view {
