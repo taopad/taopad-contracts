@@ -69,7 +69,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
     // addresses not receiving rewards.
     // (populated with this token address in the constructor).
-    mapping(address => bool) public excludedFromRewards;
+    mapping(address => bool) public isExcludedFromRewards;
 
     // =========================================================================
     // claims.
@@ -270,24 +270,20 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         maxWallet = type(uint256).max;
     }
 
-    function setMarketingWallet(address _marketingWallet) external onlyOwner {
-        marketingWallet = _marketingWallet;
-    }
-
-    function addToBlacklist(address addr) external onlyOwner {
-        isBlacklisted[addr] = true;
-    }
-
-    function removeFromBlacklist(address addr) external onlyOwner {
-        isBlacklisted[addr] = false;
-    }
-
     function excludeFromRewards(address addr) external onlyOwner {
         _excludeFromRewards(addr);
     }
 
     function includeToRewards(address addr) external onlyOwner {
         _includeToRewards(addr);
+    }
+
+    function addToBlacklist(address addr) external onlyOwner {
+        _addToBlacklist(addr);
+    }
+
+    function removeFromBlacklist(address addr) external onlyOwner {
+        _removeFromBlacklist(addr);
     }
 
     function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
@@ -304,6 +300,10 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         sellRewardFee = rewardFee;
         sellMarketingFee = marketingFee;
         sellTotalFee = rewardFee + marketingFee;
+    }
+
+    function setMarketingWallet(address _marketingWallet) external onlyOwner {
+        marketingWallet = _marketingWallet;
     }
 
     function currentMarketingAmount() external view onlyOwner returns (uint256) {
@@ -342,13 +342,11 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         require(!isBlacklisted[from], "blacklisted");
 
         // get the addresses excluded from taxes.
-        bool isSelf = address(this) == from || address(this) == to;
-        bool isRouter = address(router) == from || address(router) == to;
-        bool isExcluded = isSelf || isRouter;
+        bool isExcludedFromTaxes = _isExcludedFromTaxes(from) || _isExcludedFromTaxes(to);
 
         // check if it is a taxed buy or sell.
-        bool isTaxedBuy = !isExcluded && pairs[from];
-        bool isTaxedSell = !isExcluded && pairs[to];
+        bool isTaxedBuy = !isExcludedFromTaxes && pairs[from];
+        bool isTaxedSell = !isExcludedFromTaxes && pairs[to];
 
         // compute the reward fees and the marketing fees.
         uint256 rewardFee = (isTaxedBuy ? buyRewardFee : 0) + (isTaxedSell ? sellRewardFee : 0);
@@ -362,9 +360,15 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         // compute the actual amount sent to receiver.
         uint256 transferActualAmount = amount - transferTotalFeeAmount;
 
-        // prevents from bad behavior.
-        if (!isExcluded) _preventSnipers(from, to);
-        if (!isExcluded) _preventMaxWallet(to, transferActualAmount);
+        // prevents max wallet on transfer to a non pair address.
+        if (!isExcludedFromTaxes && !pairs[to]) {
+            require(transferActualAmount + balanceOf(to) <= maxWallet, "max-wallet-reached");
+        }
+
+        // add to blacklist while buying in dead block.
+        if (isTaxedBuy && _isDeadBlock()) {
+            _addToBlacklist(to);
+        }
 
         // transfer the actual amount.
         super._transfer(from, to, transferActualAmount);
@@ -384,40 +388,80 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         _updateShare(to);
     }
 
-    function _preventSnipers(address from, address to) private {
-        if (block.number > startBlock + deadBlocks) return;
-
-        if (pairs[from]) {
-            isBlacklisted[to] = true;
-        }
-    }
-
-    function _preventMaxWallet(address to, uint256 amount) private view {
-        if (!pairs[to]) {
-            require(amount + balanceOf(to) <= maxWallet, "max-wallet-reached");
-        }
+    /**
+     * Return whether current block is a dead block (= get blacklisted when buying
+     * in a dead block).
+     */
+    function _isDeadBlock() private view returns (bool) {
+        return block.number <= startBlock + deadBlocks;
     }
 
     /**
-     * Update the total shares and the shares of the given address if it is not
-     * excluded from rewards.
-     *
-     * Earn first with his current share amount then update shares according to
-     * its new balance.
+     * Return adresses excluded from taxes (= this contract address or router).
      */
-    function _updateShare(address holder) private {
-        if (excludedFromRewards[holder]) return;
+    function _isExcludedFromTaxes(address addr) private view returns (bool) {
+        return address(this) == addr || address(router) == addr;
+    }
 
-        Share storage share = shareholders[holder];
+    /**
+     * Exclude the given address from rewards.
+     *
+     * Earn its rewards then remove it from total shares.
+     */
+    function _excludeFromRewards(address addr) private {
+        isExcludedFromRewards[addr] = true;
+
+        Share storage share = shareholders[addr];
 
         _earn(share);
 
-        uint256 balance = balanceOf(holder);
+        totalShares -= share.amount;
 
-        totalShares = totalShares - share.amount + balance;
+        share.amount = 0;
+    }
+
+    /**
+     * Include the given address to rewards.
+     *
+     * It must be excluded first.
+     *
+     * Add its balance to totalShares and record current ETHR.
+     */
+    function _includeToRewards(address addr) private {
+        require(isExcludedFromRewards[addr], "the given address must be excluded");
+
+        isExcludedFromRewards[addr] = false;
+
+        Share storage share = shareholders[addr];
+
+        uint256 balance = balanceOf(addr);
+
+        totalShares += balance;
 
         share.amount = balance;
-        share.lastBlockUpdate = block.number;
+        share.ETHRLast = ETHR;
+    }
+
+    /**
+     * Blacklist the given address and remove it from rewards.
+     */
+    function _addToBlacklist(address addr) private {
+        isBlacklisted[addr] = true;
+
+        _excludeFromRewards(addr);
+    }
+
+    /**
+     * Remove the given address from blacklist and include it to rewards.
+     *
+     * It must be blacklisted first.
+     */
+    function _removeFromBlacklist(address addr) private {
+        require(isBlacklisted[addr], "the given address must be blacklisted");
+
+        isBlacklisted[addr] = false;
+
+        _includeToRewards(addr);
     }
 
     /**
@@ -459,42 +503,25 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * Exclude the given address from rewards.
+     * Update the total shares and the shares of the given address if it is not
+     * excluded from rewards.
      *
-     * Earn its rewards then remove it from total shares.
+     * Earn first with his current share amount then update shares according to
+     * its new balance.
      */
-    function _excludeFromRewards(address addr) private {
-        excludedFromRewards[addr] = true;
+    function _updateShare(address holder) private {
+        if (isExcludedFromRewards[holder]) return;
 
-        Share storage share = shareholders[addr];
+        Share storage share = shareholders[holder];
 
         _earn(share);
 
-        totalShares -= share.amount;
+        uint256 balance = balanceOf(holder);
 
-        share.amount = 0;
-    }
-
-    /**
-     * Include the given address to rewards.
-     *
-     * It must be excluded first.
-     *
-     * Add its balance to totalShares.
-     */
-    function _includeToRewards(address addr) private {
-        require(excludedFromRewards[addr], "the given address must be excluded");
-
-        excludedFromRewards[addr] = false;
-
-        Share storage share = shareholders[addr];
-
-        uint256 balance = balanceOf(addr);
-
-        totalShares += balance;
+        totalShares = totalShares - share.amount + balance;
 
         share.amount = balance;
-        share.ETHRLast = ETHR;
+        share.lastBlockUpdate = block.number;
     }
 
     /**
