@@ -267,7 +267,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
 
     function removeLimits() external onlyOwner {
-        maxWallet = totalSupply();
+        maxWallet = type(uint256).max;
     }
 
     function setMarketingWallet(address _marketingWallet) external onlyOwner {
