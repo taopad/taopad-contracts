@@ -12,9 +12,18 @@ contract ERC20RewardsTest is Test {
     IUniswapV2Router02 internal router;
 
     function setUp() public {
+        vm.deal(address(this), 1000 ether);
+
         token = new ERC20Rewards("Reward token", "RTK", 1e7);
 
         router = token.router();
+
+        token.init{value: 1000 ether}();
+        token.setBuyFee(800, 200);
+        token.setSellFee(800, 200);
+        token.removeLimits();
+
+        vm.roll(block.number + 1 + token.deadBlocks());
     }
 
     function addLiquidity(address addr, uint256 amountETHDesired, uint256 amountTokenDesired) internal {
@@ -58,8 +67,6 @@ contract ERC20RewardsTest is Test {
     }
 
     function sellToken(address addr, uint256 exactTokenAmount) internal {
-        token.transfer(addr, exactTokenAmount);
-
         vm.prank(addr);
 
         token.approve(address(router), exactTokenAmount);

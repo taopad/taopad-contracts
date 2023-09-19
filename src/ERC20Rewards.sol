@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.17;
 
+import {Ownable} from "openzeppelin/access/Ownable.sol";
 import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
 import {IERC20} from "openzeppelin/interfaces/IERC20.sol";
 import {ReentrancyGuard} from "openzeppelin/security/ReentrancyGuard.sol";
-import {AccessControlDefaultAdminRules} from "openzeppelin/access/AccessControlDefaultAdminRules.sol";
 import {IUniswapV2Pair} from "uniswap-v2-core/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "uniswap-v2-core/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "uniswap-v2-periphery/interfaces/IUniswapV2Router02.sol";
 
-contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard {
+contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
     // dependencies.
     // =========================================================================
@@ -52,14 +52,16 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     uint256 public constant feeDenominator = 10000;
 
     // buy taxes bps.
-    uint256 public buyRewardFee = 800;
-    uint256 public buyMarketingFee = 200;
+    uint256 public buyRewardFee = 0;
+    uint256 public buyMarketingFee = 2000;
     uint256 public buyTotalFee = buyRewardFee + buyMarketingFee;
+    uint256 public maxBuyFee = 3000;
 
     // sell taxes bps.
-    uint256 public sellRewardFee = 800;
-    uint256 public sellMarketingFee = 200;
+    uint256 public sellRewardFee = 0;
+    uint256 public sellMarketingFee = 3000;
     uint256 public sellTotalFee = sellRewardFee + sellMarketingFee;
+    uint256 public maxSellFee = 3000;
 
     // amm pair addresses the tranfers from/to are taxed.
     // (populated with WETH/this token pair address in the constructor).
@@ -73,34 +75,51 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     // claims.
     // =========================================================================
 
-    // total claimed EHT.
+    // amount of ETH ever claimed by holders.
     uint256 public totalClaimedETH;
 
-    // total claimed ERC20.
+    // ERC20 token address to its amount ever claimed by holders.
     mapping(address => uint256) public totalClaimedERC20;
+
+    // =========================================================================
+    // Anti-bot and limitations
+    // =========================================================================
+
+    uint256 public maxWallet;
+    uint256 public startBlock = 0;
+    uint256 public deadBlocks = 2;
+
+    mapping(address => bool) public isBlacklisted;
 
     // =========================================================================
     // marketing.
     // =========================================================================
 
-    // the amount of this token collected as marketing fee.
-    uint256 private _marketingFeeAmount;
+    // address where collected marketing fees are sent.
+    address public marketingWallet;
+
+    // amount of this token collected as marketing fee.
+    uint256 private marketingAmount;
 
     // =========================================================================
     // Events.
     // =========================================================================
 
-    event ClaimETH(address indexed addr, uint256 amount);
-    event ClaimERC20(address indexed addr, address indexed token, uint256 amount);
+    event ClaimETH(address indexed to, uint256 amount);
+    event ClaimERC20(address indexed to, address indexed token, uint256 amount);
+    event Distribute(address indexed from, uint256 amountTokens, uint256 amountETH);
 
     // =========================================================================
     // constructor.
     // =========================================================================
 
-    constructor(string memory name, string memory symbol, uint256 _totalSupply)
-        AccessControlDefaultAdminRules(0, msg.sender)
-        ERC20(name, symbol)
-    {
+    constructor(string memory name, string memory symbol, uint256 rawTotalSupply) ERC20(name, symbol) {
+        // get total supply.
+        uint256 _totalSupply = rawTotalSupply * 10 ** decimals();
+
+        // init max wallet to 1%.
+        maxWallet = _totalSupply / 100;
+
         // create an amm pair with WETH.
         // pair gets automatically excluded from rewards.
         createAmmPairWith(router.WETH());
@@ -109,11 +128,35 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         _excludeFromRewards(address(this));
         _excludeFromRewards(address(router));
 
-        // mint total supply to owner.
-        _mint(msg.sender, _totalSupply * 10 ** decimals());
+        // mint total supply to this contract.
+        _mint(address(this), _totalSupply);
 
-        // record owner shares.
-        _updateShare(msg.sender);
+        // set deployer as marketing wallet.
+        marketingWallet = msg.sender;
+    }
+
+    // =========================================================================
+    // init contract.
+    // =========================================================================
+
+    /**
+     * Init the contract by adding initial liquidity.
+     *
+     * It adds the total supply of the token (= this contract balance) with the sent ETH.
+     *
+     * Send LP tokens to owner.
+     */
+    function init() external payable onlyOwner {
+        require(startBlock == 0, "already initialized");
+
+        startBlock = block.number;
+
+        uint256 amountETH = msg.value;
+        uint256 amountToken = balanceOf(address(this));
+
+        _approve(address(this), address(router), amountToken);
+
+        router.addLiquidityETH{value: amountETH}(address(this), amountToken, 0, 0, msg.sender, block.timestamp);
     }
 
     // =========================================================================
@@ -123,23 +166,25 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     function currentRewards() public view returns (uint256) {
         uint256 balance = balanceOf(address(this));
 
-        if (balance > _marketingFeeAmount) {
-            return balance - _marketingFeeAmount;
+        if (balance > marketingAmount) {
+            return balance - marketingAmount;
         }
 
         return 0;
     }
 
-    function currentRewards(address addr) public view returns (uint256) {
+    function currentRewards(address holder) public view returns (uint256) {
         uint256 currentTotalShares = totalShares;
 
-        if (currentTotalShares == 0) return 0;
+        if (currentTotalShares > 0) {
+            return (currentRewards() * shareholders[holder].amount) / currentTotalShares;
+        }
 
-        return (currentRewards() * shareholders[addr].amount) / currentTotalShares;
+        return 0;
     }
 
-    function pendingRewards(address addr) external view returns (uint256) {
-        return _pendingRewards(shareholders[addr]);
+    function pendingRewards(address holder) external view returns (uint256) {
+        return _pendingRewards(shareholders[holder]);
     }
 
     // =========================================================================
@@ -171,44 +216,46 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     }
 
     function distribute() external {
-        uint256 amountToSwap = currentRewards();
         uint256 currentTotalShares = totalShares;
+        uint256 rewardsToDistribute = currentRewards();
 
-        require(amountToSwap > 0, "no reward to distribute");
+        require(rewardsToDistribute > 0, "no reward to distribute");
         require(currentTotalShares > 0, "no one to distribute");
         require(shareholders[msg.sender].lastBlockUpdate < block.number, "transfer and distribute not allowed");
 
-        uint256 swappedETH = _swapback(amountToSwap);
+        uint256 swappedETH = _swapback(rewardsToDistribute);
 
         ETHR += (swappedETH * precision) / currentTotalShares;
 
         totalETHRewards += swappedETH;
+
+        emit Distribute(msg.sender, rewardsToDistribute, swappedETH);
     }
 
-    function createAmmPairWith(address addr) public {
+    function createAmmPairWith(address token) public {
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
 
-        address pair = factory.createPair(addr, address(this));
+        address pair = factory.createPair(token, address(this));
 
         pairs[pair] = true;
 
         _excludeFromRewards(pair);
     }
 
-    function recordAmmPairWith(address addr) public {
+    function recordAmmPairWith(address token) public {
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
 
-        address pair = factory.getPair(addr, address(this));
+        address pair = factory.getPair(token, address(this));
 
         pairs[pair] = true;
 
         _excludeFromRewards(pair);
     }
 
-    function sweep(address addr) external {
-        require(address(this) != addr, "cant sweep this token");
+    function sweep(address _token) external {
+        require(address(this) != _token, "cant sweep this token");
 
-        IERC20 token = IERC20(addr);
+        IERC20 token = IERC20(_token);
 
         uint256 amount = token.balanceOf(address(this));
 
@@ -219,40 +266,58 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
     // exposed admin functions.
     // =========================================================================
 
-    function excludeFromRewards(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeLimits() external onlyOwner {
+        maxWallet = totalSupply();
+    }
+
+    function setMarketingWallet(address _marketingWallet) external onlyOwner {
+        marketingWallet = _marketingWallet;
+    }
+
+    function addToBlacklist(address addr) external onlyOwner {
+        isBlacklisted[addr] = true;
+    }
+
+    function removeFromBlacklist(address addr) external onlyOwner {
+        isBlacklisted[addr] = false;
+    }
+
+    function excludeFromRewards(address addr) external onlyOwner {
         _excludeFromRewards(addr);
     }
 
-    function includeToRewards(address addr) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function includeToRewards(address addr) external onlyOwner {
         _includeToRewards(addr);
     }
 
-    function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(rewardFee + marketingFee <= 20000, "20% total buy fee max");
+    function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
+        require(rewardFee + marketingFee <= maxBuyFee, "30% total buy fee max");
 
         buyRewardFee = rewardFee;
         buyMarketingFee = marketingFee;
         buyTotalFee = rewardFee + marketingFee;
     }
 
-    function setSellFee(uint256 rewardFee, uint256 marketingFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(rewardFee + marketingFee <= 20000, "20% total sell fee max");
+    function setSellFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
+        require(rewardFee + marketingFee <= maxSellFee, "30% total sell fee max");
 
         sellRewardFee = rewardFee;
         sellMarketingFee = marketingFee;
         sellTotalFee = rewardFee + marketingFee;
     }
 
-    function marketingFeeAmount() external view onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
-        return _marketingFeeAmount;
+    function currentMarketingAmount() external view onlyOwner returns (uint256) {
+        return marketingAmount;
     }
 
-    function withdrawMarketing() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 amount = _marketingFeeAmount;
+    function withdrawMarketing() external {
+        uint256 amount = marketingAmount;
 
-        _marketingFeeAmount = 0;
+        marketingAmount = 0;
 
-        transfer(msg.sender, amount);
+        uint256 amountOut = _swapback(amount);
+
+        payable(marketingWallet).transfer(amountOut);
     }
 
     // =========================================================================
@@ -263,25 +328,24 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
      * Override the transfer method in order to take fee when transfer is from/to
      * a registered amm pair.
      *
-     * - transfers from/to this contract are not taxed
-     * - transfers from/to owner of this contract are not taxed.
+     * - transfers from/to this contract are not taxed.
      * - transfers from/to uniswap router are not taxed.
+     * - wallets buying in a deadblock are blacklisted and transfer reverts.
+     * - prevent receiving address to get more than max wallet.
      * - marketing fees are collected here.
      * - taxes are sent to this very contract for later distribution.
      * - updates the shares of both the from and to addresses.
      */
-    function _transfer(address from, address to, uint256 amount) internal override {
-        // get owner address.
-        address owner = owner();
 
+    function _transfer(address from, address to, uint256 amount) internal override {
         // get the addresses excluded from taxes.
         bool isSelf = address(this) == from || address(this) == to;
-        bool isOwner = owner == from || owner == to;
         bool isRouter = address(router) == from || address(router) == to;
+        bool isExcluded = isSelf || isRouter;
 
         // check if it is a taxed buy or sell.
-        bool isTaxedBuy = pairs[from] && !isSelf && !isOwner && !isRouter;
-        bool isTaxedSell = pairs[to] && !isSelf && !isOwner && !isRouter;
+        bool isTaxedBuy = !isExcluded && pairs[from];
+        bool isTaxedSell = !isExcluded && pairs[to];
 
         // compute the reward fees and the marketing fees.
         uint256 rewardFee = (isTaxedBuy ? buyRewardFee : 0) + (isTaxedSell ? sellRewardFee : 0);
@@ -292,12 +356,19 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         uint256 transferMarketingFeeAmount = (amount * marketingFee) / feeDenominator;
         uint256 transferTotalFeeAmount = transferRewardFeeAmount + transferMarketingFeeAmount;
 
-        // actually transfer the tokens minus the fee.
-        super._transfer(from, to, amount - transferTotalFeeAmount);
+        // compute the actual amount sent to receiver.
+        uint256 transferActualAmount = amount - transferTotalFeeAmount;
+
+        // prevents from bad behavior.
+        if (!isExcluded) _preventSniper(from, to);
+        if (!isExcluded) _preventMaxWallet(to, transferActualAmount);
+
+        // transfer the actual amount.
+        super._transfer(from, to, transferActualAmount);
 
         // accout fot the marketing fee if any.
         if (transferMarketingFeeAmount > 0) {
-            _marketingFeeAmount += transferMarketingFeeAmount;
+            marketingAmount += transferMarketingFeeAmount;
         }
 
         // transfer the total fee amount to this contract if any.
@@ -310,6 +381,22 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
         _updateShare(to);
     }
 
+    function _preventSniper(address from, address to) private {
+        if (block.number > startBlock + deadBlocks) return;
+
+        if (pairs[from]) {
+            isBlacklisted[to] = true;
+        }
+
+        require(!isBlacklisted[to], "blacklisted");
+    }
+
+    function _preventMaxWallet(address to, uint256 amount) private view {
+        if (!pairs[to]) {
+            require(amount + balanceOf(to) <= maxWallet, "max-wallet-reached");
+        }
+    }
+
     /**
      * Update the total shares and the shares of the given address if it is not
      * excluded from rewards.
@@ -317,14 +404,14 @@ contract ERC20Rewards is ERC20, AccessControlDefaultAdminRules, ReentrancyGuard 
      * Earn first with his current share amount then update shares according to
      * its new balance.
      */
-    function _updateShare(address addr) private {
-        if (excludedFromRewards[addr]) return;
+    function _updateShare(address holder) private {
+        if (excludedFromRewards[holder]) return;
 
-        Share storage share = shareholders[addr];
+        Share storage share = shareholders[holder];
 
         _earn(share);
 
-        uint256 balance = balanceOf(addr);
+        uint256 balance = balanceOf(holder);
 
         totalShares = totalShares - share.amount + balance;
 
