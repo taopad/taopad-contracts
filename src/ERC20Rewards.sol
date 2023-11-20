@@ -57,14 +57,14 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     uint256 public constant feeDenominator = 10000;
 
     // buy taxes bps.
-    uint256 public buyRewardFee = 0;
-    uint256 public buyMarketingFee = 2000;
+    uint256 public buyRewardFee = 400;
+    uint256 public buyMarketingFee = 100;
     uint256 public buyTotalFee = buyRewardFee + buyMarketingFee;
     uint256 public maxBuyFee = 3000;
 
     // sell taxes bps.
-    uint256 public sellRewardFee = 0;
-    uint256 public sellMarketingFee = 3000;
+    uint256 public sellRewardFee = 400;
+    uint256 public sellMarketingFee = 100;
     uint256 public sellTotalFee = sellRewardFee + sellMarketingFee;
     uint256 public maxSellFee = 3000;
 
@@ -557,6 +557,9 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Sell amount of tokens for ETH to the given address and return the amount it received.
      */
     function _swapToETH(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
+        // return 0 if no amount given.
+        if (amountIn == 0) return 0;
+
         // approve router to spend tokens.
         _approve(address(this), address(router), amountIn);
 
