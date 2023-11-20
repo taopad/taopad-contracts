@@ -578,6 +578,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * This contract cant receive ETH.
      */
     receive() external payable {
-        require(msg.sender == address(router) || pairs[msg.sender], "cant send eth to this contract");
+        require(msg.sender == address(router) || pairs[msg.sender], "cannot send eth to this contract");
     }
 }
