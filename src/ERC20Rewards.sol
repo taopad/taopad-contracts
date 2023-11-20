@@ -4,7 +4,7 @@ pragma solidity ^0.8.17;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
@@ -113,7 +113,10 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // constructor.
     // =========================================================================
 
-    constructor(string memory name, string memory symbol, uint256 rawTotalSupply) ERC20(name, symbol) {
+    constructor(string memory name, string memory symbol, uint256 rawTotalSupply)
+        Ownable(msg.sender)
+        ERC20(name, symbol)
+    {
         // get total supply.
         uint256 _totalSupply = rawTotalSupply * 10 ** decimals();
 
@@ -328,7 +331,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Override the transfer method in order to take fee when transfer is from/to
+     * Override the update method in order to take fee when transfer is from/to
      * a registered amm pair.
      *
      * - transfers from/to this contract are not taxed.
@@ -340,7 +343,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * - updates the shares of both the from and to addresses.
      */
 
-    function _transfer(address from, address to, uint256 amount) internal override {
+    function _update(address from, address to, uint256 amount) internal override {
         // blacklisted addresses cant transfer tokens.
         require(!isBlacklisted[from], "blacklisted");
 
@@ -374,7 +377,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         }
 
         // transfer the actual amount.
-        super._transfer(from, to, transferActualAmount);
+        super._update(from, to, transferActualAmount);
 
         // accout fot the marketing fee if any.
         if (transferMarketingFeeAmount > 0) {
@@ -383,7 +386,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         // transfer the total fee amount to this contract if any.
         if (transferTotalFeeAmount > 0) {
-            super._transfer(from, address(this), transferTotalFeeAmount);
+            super._update(from, address(this), transferTotalFeeAmount);
         }
 
         // updates shareholders values.
