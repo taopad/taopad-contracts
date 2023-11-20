@@ -23,17 +23,11 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // numerator multiplier so tokenPerShare does not get rounded to 0.
     uint256 private constant PRECISION = 1e18;
 
-    // total amount of token ever sent as rewards.
-    uint256 public totalRewarded;
+    // minimum amount of token to distribute on sell.
+    uint256 private distributionThreshold;
 
-    // the rewards buffer accumulating until reaching the rewards threshold.
-    uint256 private rewardBuffer;
-
-    // minimum amount of token to distribute.
-    uint256 private rewardThreshold;
-
-    // the accumulated amount of reward token per share.
-    uint256 private tokenPerShare;
+    // the accumulated amount of ETH per share.
+    uint256 private ETHPerShare;
 
     // total shares of this token.
     // (different from total supply because of fees and excluded wallets).
@@ -46,8 +40,14 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     struct Share {
         uint256 amount; // recorded balance after last transfer.
         uint256 earned; // amount of tokens earned but not claimed yet.
-        uint256 tokenPerShareLast; // token per share value of the last earn occurrence.
+        uint256 ETHPerShareLast; // token per share value of the last earn occurrence.
     }
+
+    // total amount of ETH ever sent as rewards.
+    uint256 public totalETHRewarded;
+
+    // amount of ETH ever claimed by holders.
+    uint256 public totalETHClaimed;
 
     // =========================================================================
     // fees.
@@ -76,19 +76,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     mapping(address => bool) public isOptin;
 
     // =========================================================================
-    // claim accounting.
-    // =========================================================================
-
-    // amount of rewards ever claimed by holders.
-    uint256 public totalClaimed;
-
-    // amount of ETH ever claimed by holders.
-    uint256 public totalClaimedETH;
-
-    // ERC20 token address to the amount ever claimed by holders.
-    mapping(address => uint256) public totalClaimedERC20;
-
-    // =========================================================================
     // Anti-bot and limitations
     // =========================================================================
 
@@ -113,8 +100,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
 
     event Claim(address indexed to, uint256 amount);
-    event ClaimETH(address indexed to, uint256 amount);
-    event ClaimERC20(address indexed to, address indexed token, uint256 amount);
+    event Distribute(address indexed from, uint256 amount);
 
     // =========================================================================
     // constructor.
@@ -165,13 +151,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Return the current total pending rewards.
-     */
-    function pendingRewards() public view returns (uint256) {
-        return balanceOf(address(this)) - _marketingAmount;
-    }
-
-    /**
      * Return the user pending rewards.
      */
     function pendingRewards(address holder) external view returns (uint256) {
@@ -179,52 +158,16 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * Claim rewards as this token.
+     * Claim ETH rewards.
      */
     function claim() external nonReentrant {
         uint256 claimed = _claim(shareholders[msg.sender]);
 
         if (claimed == 0) return;
 
-        transfer(msg.sender, claimed);
-
-        totalClaimed += claimed;
+        totalETHClaimed += claimed;
 
         emit Claim(msg.sender, claimed);
-    }
-
-    /**
-     * Claim rewards as ETH.
-     */
-    function claimETH(uint256 minAmountOut) external nonReentrant {
-        uint256 claimed = _claim(shareholders[msg.sender]);
-
-        if (claimed == 0) return;
-
-        uint256 claimedETH = _swapToETH(msg.sender, claimed, minAmountOut);
-
-        totalClaimed += claimed;
-        totalClaimedETH += claimedETH;
-
-        emit Claim(msg.sender, claimed);
-        emit ClaimETH(msg.sender, claimedETH);
-    }
-
-    /**
-     * Claim rewards as the given ERC20 token.
-     */
-    function claimERC20(address token, uint256 minAmountOut) external nonReentrant {
-        uint256 claimed = _claim(shareholders[msg.sender]);
-
-        if (claimed == 0) return;
-
-        uint256 claimedERC20 = _swapToERC20(msg.sender, token, claimed, minAmountOut);
-
-        totalClaimed += claimed;
-        totalClaimedETH += claimedERC20;
-
-        emit Claim(msg.sender, claimed);
-        emit ClaimERC20(msg.sender, address(this), claimedERC20);
     }
 
     /**
@@ -274,6 +217,19 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
+     * Distribute current rewards as ETH.
+     */
+    function distribute() external nonReentrant {
+        uint256 balance = _rewardBalance();
+
+        uint256 distributed = _distribute(balance);
+
+        if (distributed == 0) return;
+
+        emit Distribute(msg.sender, distributed);
+    }
+
+    /**
      * Sweep any other ERC20 mistakenly sent to this contract.
      */
     function sweep(address _token) external {
@@ -294,12 +250,8 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         maxWallet = type(uint256).max;
     }
 
-    function addToBlacklist(address addr) external onlyOwner {
-        _addToBlacklist(addr);
-    }
-
-    function removeFromBlacklist(address addr) external onlyOwner {
-        _removeFromBlacklist(addr);
+    function setDistributionThreshold(uint256 _distributionThreshold) external onlyOwner {
+        distributionThreshold = _distributionThreshold;
     }
 
     function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
@@ -343,6 +295,14 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         _marketingAmount -= amountToWithdraw;
 
         transfer(marketingWallet, amountToWithdraw);
+    }
+
+    function addToBlacklist(address addr) external onlyOwner {
+        _addToBlacklist(addr);
+    }
+
+    function removeFromBlacklist(address addr) external onlyOwner {
+        _removeFromBlacklist(addr);
     }
 
     // =========================================================================
@@ -416,7 +376,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         share.amount = balance;
         share.earned = 0;
-        share.tokenPerShareLast = tokenPerShare;
+        share.ETHPerShareLast = ETHPerShare;
 
         totalShares += balance;
     }
@@ -434,13 +394,20 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
+     * Return the reward amount as token amount.
+     */
+    function _rewardBalance() private view returns (uint256) {
+        return balanceOf(address(this)) - _marketingAmount;
+    }
+
+    /**
      * Compute the pending rewards of the given share.
      *
      * The rewards earned since the last transfer are added to the already earned
      * rewards.
      */
     function _pendingRewards(Share memory share) private view returns (uint256) {
-        uint256 RDiff = tokenPerShare - share.tokenPerShareLast;
+        uint256 RDiff = ETHPerShare - share.ETHPerShareLast;
         uint256 earned = (share.amount * RDiff) / PRECISION;
 
         return share.earned + earned;
@@ -453,7 +420,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         uint256 pending = _pendingRewards(share);
 
         share.earned = pending;
-        share.tokenPerShareLast = tokenPerShare;
+        share.ETHPerShareLast = ETHPerShare;
     }
 
     /**
@@ -463,7 +430,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         uint256 pending = _pendingRewards(share);
 
         share.earned = 0;
-        share.tokenPerShareLast = tokenPerShare;
+        share.ETHPerShareLast = ETHPerShare;
 
         return pending;
     }
@@ -528,8 +495,10 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         _updateShare(from);
         _updateShare(to);
 
-        // distribute the reward fee amount.
-        _distribute(transferMarketingFeeAmount);
+        // on sell we distribute when balance is above threshold.
+        if (isTaxedSell) {
+            _distributeIfAboveThreshold(from);
+        }
     }
 
     /**
@@ -554,19 +523,29 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * Distribute the given amount by accumulating the tokenPerShare.
+     * Distribute the given amount of tokens as rewards.
      */
-    function _distribute(uint256 amount) private {
-        if (amount == 0) return;
+    function _distribute(uint256 amount) private returns (uint256) {
+        if (totalShares == 0) return 0;
 
-        rewardBuffer += amount;
+        uint256 distributed = _swapToETH(address(this), amount, 0);
 
-        if (totalShares == 0) return;
+        ETHPerShare += (distributed * PRECISION) / totalShares;
 
-        if (rewardBuffer >= rewardThreshold) {
-            tokenPerShare += (rewardBuffer * PRECISION) / totalShares;
-            totalRewarded += rewardBuffer;
-            rewardBuffer = 0;
+        return distributed;
+    }
+
+    /**
+     * Distribute from addr when above distribution threshold.
+     */
+    function _distributeIfAboveThreshold(address from) private {
+        uint256 balance = _rewardBalance();
+        if (balance > distributionThreshold) {
+            uint256 distributed = _distribute(balance);
+
+            if (distributed == 0) return;
+
+            emit Distribute(from, distributed);
         }
     }
 
@@ -592,32 +571,9 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * Sell amount of tokens for ERC20 to a given address and return the amount it received.
-     */
-    function _swapToERC20(address to, address token, uint256 amountIn, uint256 amountOutMin)
-        private
-        returns (uint256)
-    {
-        // approve router to spend tokens.
-        _approve(address(this), address(router), amountIn);
-
-        // keep the original token balance to compute the swapped amount.
-        uint256 originalBalance = IERC20(token).balanceOf(to);
-
-        // swapback the given ETHAmount to token.
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = token;
-
-        router.swapExactTokensForTokensSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, to, block.timestamp);
-
-        return IERC20(token).balanceOf(to) - originalBalance;
-    }
-
-    /**
      * This contract cant receive ETH.
      */
     receive() external payable {
-        revert("cant send eth to this contract");
+        require(msg.sender == address(router) || pairs[msg.sender], "cant send eth to this contract");
     }
 }

@@ -24,13 +24,11 @@ contract LiquidityTest is ERC20RewardsTest {
         rewardFee += (received * token.sellRewardFee()) / token.feeDenominator();
         marketingFee += (received * token.sellMarketingFee()) / token.feeDenominator();
 
-        assertApproxEqRel(token.pendingRewards(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
 
         // no tax is collected from removing liquidity.
         removeLiquidity(provider);
 
-        assertApproxEqRel(token.pendingRewards(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
 
         // provider must have 0.9 ethers back minus some dex fees.

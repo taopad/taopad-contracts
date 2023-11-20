@@ -26,7 +26,6 @@ contract SwapTest is ERC20RewardsTest {
         // 1000 as contract balance, 800 as rewards, 200 as marketing.
         // add 1% tolerance to account for swap fee/slippage.
         assertApproxEqRel(received, amount - rewardFee - marketingFee, 0.01e18);
-        assertApproxEqRel(token.pendingRewards(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
@@ -39,7 +38,6 @@ contract SwapTest is ERC20RewardsTest {
 
         // ensure collected taxes have the excpected values.
         assertEq(token.balanceOf(user), 0);
-        assertApproxEqRel(token.pendingRewards(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
     }
