@@ -23,9 +23,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // numerator multiplier so tokenPerShare does not get rounded to 0.
     uint256 private constant PRECISION = 1e18;
 
-    // minimum amount of token to distribute on sell.
-    uint256 private distributionThreshold;
-
     // the accumulated amount of ETH per share.
     uint256 private ETHPerShare;
 
@@ -43,11 +40,14 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         uint256 ETHPerShareLast; // token per share value of the last earn occurrence.
     }
 
-    // total amount of ETH ever sent as rewards.
-    uint256 public totalETHRewarded;
-
     // amount of ETH ever claimed by holders.
     uint256 public totalETHClaimed;
+
+    // total amount of ETH ever sent as rewards.
+    uint256 public totalETHDistributed;
+
+    // minimum amount of token to distribute on sell.
+    uint256 private distributionThreshold;
 
     // =========================================================================
     // fees.
@@ -531,6 +531,8 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         uint256 distributed = _swapToETH(address(this), amount, 0);
 
         ETHPerShare += (distributed * PRECISION) / totalShares;
+
+        totalETHDistributed += distributed;
 
         return distributed;
     }
