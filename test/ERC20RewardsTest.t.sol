@@ -14,11 +14,11 @@ contract ERC20RewardsTest is Test {
     function setUp() public {
         vm.deal(address(this), 1000 ether);
 
-        token = new ERC20Rewards("Reward token", "RTK", 1e7);
+        token = new ERC20Rewards("Reward token", "RTK");
 
         router = token.router();
 
-        token.init{value: 1000 ether}();
+        token.initialize{value: 1000 ether}(1e7);
         token.setBuyFee(800, 200);
         token.setSellFee(800, 200);
         token.removeLimits();
