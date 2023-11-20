@@ -446,10 +446,10 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * - addresses buying in a deadblock are blacklisted and cant transfer tokens anymore.
      * - prevent receiving address to get more than max wallet.
      * - marketing fees are collected and distributed here.
-     * - taxes are sent to this very contract for later claim.
+     * - taxes are sent to this very contract.
      * - updates the shares of both the from and to addresses.
+     * - if this is a sell, distribute if rewards are above threshold.
      */
-
     function _update(address from, address to, uint256 amount) internal override {
         // blacklisted addresses cant transfer tokens.
         require(!isBlacklisted[from], "blacklisted");
