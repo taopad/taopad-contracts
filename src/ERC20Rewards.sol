@@ -151,7 +151,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Return the user pending rewards.
+     * Return the user pending ETH rewards.
      */
     function pendingRewards(address holder) external view returns (uint256) {
         return _pendingRewards(shareholders[holder]);
@@ -166,6 +166,8 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         if (claimed == 0) return;
 
         totalETHClaimed += claimed;
+
+        payable(msg.sender).transfer(claimed);
 
         emit Claim(msg.sender, claimed);
     }
