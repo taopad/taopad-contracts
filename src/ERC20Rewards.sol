@@ -15,7 +15,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // dependencies.
     // =========================================================================
 
-    IERC20 public constant rewardToken = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // usdc
+    IERC20 public constant rewardToken = IERC20(0x77E06c9eCCf2E797fd462A92B6D7642EF85b0A44); // wTAO
     ISwapRouter public constant swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
     IUniswapV2Router02 public constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
@@ -578,7 +578,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: router.WETH(),
             tokenOut: address(rewardToken),
-            fee: 100,
+            fee: 10000,
             recipient: to,
             deadline: block.timestamp,
             amountIn: amountIn,
