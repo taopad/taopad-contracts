@@ -14,6 +14,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // dependencies.
     // =========================================================================
 
+    IERC20 public constant rewardToken = IERC20(0x77E06c9eCCf2E797fd462A92B6D7642EF85b0A44); // wTAO
     IUniswapV2Router02 public constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
     // =========================================================================
@@ -537,7 +538,8 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     function _distribute(uint256 amount) private returns (uint256) {
         if (totalShares == 0) return 0;
 
-        uint256 distributed = _swapToETH(address(this), amount, 0);
+        uint256 swappedETH = _swapToETHV2(address(this), amount, 0);
+        uint256 distributed = _swapToERC20V3(address(this), swappedETH, 0);
 
         ETHPerShare += (distributed * PRECISION) / totalShares;
 
@@ -549,7 +551,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     /**
      * Sell amount of tokens for ETH to the given address and return the amount it received.
      */
-    function _swapToETH(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
+    function _swapToETHV2(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
         // return 0 if no amount given.
         if (amountIn == 0) return 0;
 
@@ -568,6 +570,35 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         // return the received amount.
         return payable(to).balance - originalBalance;
+    }
+
+    /**
+     * Sell amountof ETH for ERC20 to the given address and return the amount it received.
+     */
+    function _swapToERC20V3(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
+        // return 0 if no amount given.
+        if (amountIn == 0) return 0;
+
+        // keep the original ERC20 balance to compute the swapped amount.
+        uint256 originalBalance = rewardToken.balanceOf(address(this));
+
+        // build params.
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: router.WETH(),
+            tokenOut: rewardToken,
+            fee: 100,
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: amountIn,
+            amountOutMinimum: minAmountOut,
+            sqrtPriceLimitX96: 0
+        });
+
+        // execute the swap.
+        swapRouter.exactInputSingle(params);
+
+        // return the received amount.
+        return rewardToken.balanceOf(address(this)) - originalBalance;
     }
 
     /**
