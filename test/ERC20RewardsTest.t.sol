@@ -19,7 +19,7 @@ contract ERC20RewardsTest is Test {
         router = token.router();
 
         token.initialize{value: 1000 ether}(1e7);
-        token.setBuyFee(800, 200);
+        token.setBuyFee(400, 100);
         token.setSellFee(800, 200);
         token.removeLimits();
 
