@@ -35,5 +35,25 @@ contract LiquidityTest is ERC20RewardsTest {
         // he must also have the token he bought back minus some dex fees.
         assertApproxEqRel(provider.balance, 0.9 ether, 0.02e18);
         assertApproxEqRel(token.balanceOf(provider), amount - rewardFee - marketingFee, 0.01e18);
+
+        // test distribute is not reverting.
+        vm.roll(block.number + 1);
+
+        vm.prank(provider);
+
+        token.distribute();
+
+        assertGt(token.pendingRewards(provider), 0);
+        assertApproxEqRel(token.balanceOf(address(token)), marketingFee, 0.01e18);
+
+        // test claim is not reverting.
+        uint256 pendingRewards = token.pendingRewards(provider);
+        uint256 originalBalance = payable(provider).balance;
+
+        vm.prank(provider);
+
+        token.claim();
+
+        assertEq(payable(provider).balance, originalBalance + pendingRewards);
     }
 }

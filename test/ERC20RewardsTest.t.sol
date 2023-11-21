@@ -23,7 +23,7 @@ contract ERC20RewardsTest is Test {
         token.setSellFee(800, 200);
         token.removeLimits();
 
-        vm.roll(block.number + 1 + token.deadBlocks());
+        vm.roll(block.number + token.deadBlocks() + 1);
     }
 
     function addLiquidity(address addr, uint256 amountETHDesired, uint256 amountTokenDesired) internal {

@@ -38,6 +38,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         uint256 amount; // recorded balance after last transfer.
         uint256 earned; // amount of tokens earned but not claimed yet.
         uint256 ETHPerShareLast; // token per share value of the last earn occurrence.
+        uint256 lastUpdateBlock; // last block the share was updated.
     }
 
     // amount of ETH ever claimed by holders.
@@ -222,6 +223,8 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Distribute current rewards as ETH.
      */
     function distribute() external nonReentrant {
+        require(block.number > shareholders[msg.sender].lastUpdateBlock, "update and distribute in the same block");
+
         uint256 balance = _rewardBalance();
 
         uint256 distributed = _distribute(balance);
@@ -379,6 +382,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         share.amount = balance;
         share.earned = 0;
         share.ETHPerShareLast = ETHPerShare;
+        share.lastUpdateBlock = block.number;
 
         totalShares += balance;
     }
@@ -496,11 +500,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         // updates shareholders values.
         _updateShare(from);
         _updateShare(to);
-
-        // on sell we distribute when balance is above threshold.
-        if (isTaxedSell) {
-            _distributeIfAboveThreshold(from);
-        }
     }
 
     /**
@@ -522,6 +521,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         totalShares = totalShares - share.amount + balance;
 
         share.amount = balance;
+        share.lastUpdateBlock = block.number;
     }
 
     /**
@@ -537,20 +537,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         totalETHDistributed += distributed;
 
         return distributed;
-    }
-
-    /**
-     * Distribute from addr when above distribution threshold.
-     */
-    function _distributeIfAboveThreshold(address from) private {
-        uint256 balance = _rewardBalance();
-        if (balance > distributionThreshold) {
-            uint256 distributed = _distribute(balance);
-
-            if (distributed == 0) return;
-
-            emit Distribute(from, distributed);
-        }
     }
 
     /**
