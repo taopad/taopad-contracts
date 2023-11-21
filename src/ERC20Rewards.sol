@@ -97,6 +97,12 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     uint256 private _marketingAmount;
 
     // =========================================================================
+    // pool options.
+    // =========================================================================
+
+    uint24 poolFee = 10000; // works for wTAO
+
+    // =========================================================================
     // Events.
     // =========================================================================
 
@@ -276,6 +282,10 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         sellRewardFee = rewardFee;
         sellMarketingFee = marketingFee;
         sellTotalFee = rewardFee + marketingFee;
+    }
+
+    function setPoolFee(uint24 _poolFee) external onlyOwner {
+        poolFee = _poolFee;
     }
 
     function setMarketingWallet(address _marketingWallet) external onlyOwner {
@@ -578,7 +588,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: router.WETH(),
             tokenOut: address(rewardToken),
-            fee: 10000,
+            fee: poolFee,
             recipient: to,
             deadline: block.timestamp,
             amountIn: amountIn,
