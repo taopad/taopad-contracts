@@ -71,12 +71,12 @@ contract SwapTest is ERC20RewardsTest {
 
         // test claim is not reverting.
         uint256 pendingRewards = token.pendingRewards(user);
-        uint256 originalBalance = user.balance;
 
         vm.prank(user);
 
         token.claim();
 
-        assertEq(user.balance, originalBalance + pendingRewards);
+        assertEq(address(token).balance, 0);
+        assertEq(rewardToken.balanceOf(user), pendingRewards);
     }
 }

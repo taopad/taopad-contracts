@@ -67,12 +67,12 @@ contract LiquidityTest is ERC20RewardsTest {
 
         // test claim is not reverting.
         uint256 pendingRewards = token.pendingRewards(provider);
-        uint256 originalBalance = provider.balance;
 
         vm.prank(provider);
 
         token.claim();
 
-        assertEq(provider.balance, originalBalance + pendingRewards);
+        assertEq(address(token).balance, 0);
+        assertEq(rewardToken.balanceOf(provider), pendingRewards);
     }
 }

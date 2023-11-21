@@ -3,6 +3,7 @@ pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol";
 import {ERC20Rewards} from "../src/ERC20Rewards.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
@@ -10,6 +11,7 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 contract ERC20RewardsTest is Test {
     ERC20Rewards internal token;
     IUniswapV2Router02 internal router;
+    IERC20 internal rewardToken;
 
     function setUp() public {
         vm.deal(address(this), 1000 ether);
@@ -17,6 +19,7 @@ contract ERC20RewardsTest is Test {
         token = new ERC20Rewards("Reward token", "RTK");
 
         router = token.router();
+        rewardToken = token.rewardToken();
 
         token.initialize{value: 1000 ether}(1e7);
         token.setBuyFee(400, 100);
