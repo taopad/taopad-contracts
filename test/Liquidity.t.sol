@@ -9,32 +9,50 @@ contract LiquidityTest is ERC20RewardsTest {
 
         vm.label(provider, "Buyer");
 
-        // compute expected tax after buying 1 ether.
-        uint256 amount = norm(10000);
-        uint256 rewardFee = (amount * token.buyRewardFee()) / token.feeDenominator();
-        uint256 marketingFee = (amount * token.buyMarketingFee()) / token.feeDenominator();
+        // amount for 1 ether
+        uint256 amountFor1Ether = norm(10000);
 
-        // buy 1 ether of tokens and add it back as liquidity.
+        // compute amount tax after buying 1 ether.
+        uint256 rewardFee;
+        uint256 marketingFee;
+
+        // buy 1 ether of tokens.
+        uint256 expected = amountFor1Ether;
+
         buyToken(provider, 1 ether);
 
-        uint256 received = token.balanceOf(provider);
+        rewardFee += (expected * token.buyRewardFee()) / token.feeDenominator();
+        marketingFee += (expected * token.buyMarketingFee()) / token.feeDenominator();
 
-        addLiquidity(provider, 1 ether, received);
-
-        rewardFee += (received * token.sellRewardFee()) / token.feeDenominator();
-        marketingFee += (received * token.sellMarketingFee()) / token.feeDenominator();
-
+        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(provider), expected - rewardFee - marketingFee, 0.01e18);
+
+        // add the received tokens as liquidity.
+        uint256 sent = token.balanceOf(provider);
+
+        addLiquidity(provider, 1 ether, sent);
+
+        rewardFee += (sent * token.sellRewardFee()) / token.feeDenominator();
+        marketingFee += (sent * token.sellMarketingFee()) / token.feeDenominator();
+
+        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
+        assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
+        assertEq(token.balanceOf(provider), 0);
 
         // no tax is collected from removing liquidity.
         removeLiquidity(provider);
 
+        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
 
         // provider must have 0.9 ethers back minus some dex fees.
-        // he must also have the token he bought back minus some dex fees.
+        // he must also have the token he sent to he pool minus the token fee and dex fee.
         assertApproxEqRel(provider.balance, 0.9 ether, 0.02e18);
-        assertApproxEqRel(token.balanceOf(provider), amount - rewardFee - marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(provider), amountFor1Ether - rewardFee - marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // test distribute is not reverting.
         vm.roll(block.number + 1);
@@ -43,17 +61,18 @@ contract LiquidityTest is ERC20RewardsTest {
 
         token.distribute();
 
+        assertEq(token.rewardBalance(), 0);
         assertGt(token.pendingRewards(provider), 0);
-        assertApproxEqRel(token.balanceOf(address(token)), marketingFee, 0.01e18);
+        assertEq(token.balanceOf(address(token)), token.marketingAmount());
 
         // test claim is not reverting.
         uint256 pendingRewards = token.pendingRewards(provider);
-        uint256 originalBalance = payable(provider).balance;
+        uint256 originalBalance = provider.balance;
 
         vm.prank(provider);
 
         token.claim();
 
-        assertEq(payable(provider).balance, originalBalance + pendingRewards);
+        assertEq(provider.balance, originalBalance + pendingRewards);
     }
 }

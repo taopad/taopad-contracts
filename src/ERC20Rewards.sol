@@ -152,6 +152,13 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
 
     /**
+     * Return the current reward balance as token.
+     */
+    function rewardBalance() external view returns (uint256) {
+        return _rewardBalance();
+    }
+
+    /**
      * Return the user pending ETH rewards.
      */
     function pendingRewards(address holder) external view returns (uint256) {

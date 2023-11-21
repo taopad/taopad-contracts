@@ -10,43 +10,53 @@ contract SwapTest is ERC20RewardsTest {
 
         vm.label(user, "User");
 
-        // compute expected tax after buying 1 ether.
-        uint256 amount = norm(10000);
-        uint256 rewardFee = (amount * token.buyRewardFee()) / token.feeDenominator();
-        uint256 marketingFee = (amount * token.buyMarketingFee()) / token.feeDenominator();
+        // amount for 1 ether
+        uint256 amountFor1Ether = norm(10000);
 
-        // buy 1 ether of token.
+        // compute amount tax after buying 1 ether.
+        uint256 rewardFee;
+        uint256 marketingFee;
+
+        // buy 1 ether of tokens.
+        uint256 received1 = amountFor1Ether;
+
         buyToken(user, 1 ether);
 
-        uint256 received1 = token.balanceOf(user);
+        // compute the expected tax after buying 1 ether of tokens.
+        rewardFee += (received1 * token.buyRewardFee()) / token.feeDenominator();
+        marketingFee += (received1 * token.buyMarketingFee()) / token.feeDenominator();
 
-        // for 10% tax:
-        // buyer should get 9000 tokens (10000 tokens minus 10% fee).
-        // contract should collect 1000 tokens (10% of 10000 tokens).
-        // 1000 as contract balance, 800 as rewards, 200 as marketing.
-        // add 1% tolerance to account for swap fee/slippage.
-        assertApproxEqRel(received1, amount - rewardFee - marketingFee, 0.01e18);
+        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(user), received1 - rewardFee - marketingFee, 0.01e18);
 
         // sell balance.
-        sellToken(user, received1);
+        uint256 sent = token.balanceOf(user);
+
+        sellToken(user, sent);
 
         // compute expected tax after selling whole balance.
-        rewardFee += (received1 * token.sellRewardFee()) / token.feeDenominator();
-        marketingFee += (received1 * token.sellMarketingFee()) / token.feeDenominator();
+        rewardFee += (sent * token.sellRewardFee()) / token.feeDenominator();
+        marketingFee += (sent * token.sellMarketingFee()) / token.feeDenominator();
 
         // ensure collected taxes have the excpected values.
-        assertEq(token.balanceOf(user), 0);
+        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
         assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
+        assertEq(token.balanceOf(user), 0);
 
         // must buy again otherwise theres 0 share and then 0 distribution.
+        uint256 received2 = amountFor1Ether;
+
         buyToken(user, 1 ether);
 
-        uint256 received2 = token.balanceOf(user);
-
+        rewardFee += (received2 * token.buyRewardFee()) / token.feeDenominator();
         marketingFee += (received2 * token.buyMarketingFee()) / token.feeDenominator();
+
+        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
+        assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // test distribute is not reverting.
         vm.roll(block.number + 1);
@@ -55,17 +65,18 @@ contract SwapTest is ERC20RewardsTest {
 
         token.distribute();
 
+        assertEq(token.rewardBalance(), 0);
         assertGt(token.pendingRewards(user), 0);
-        assertApproxEqRel(token.balanceOf(address(token)), marketingFee, 0.04e18); // its diverging a bit
+        assertEq(token.balanceOf(address(token)), token.marketingAmount());
 
         // test claim is not reverting.
         uint256 pendingRewards = token.pendingRewards(user);
-        uint256 originalBalance = payable(user).balance;
+        uint256 originalBalance = user.balance;
 
         vm.prank(user);
 
         token.claim();
 
-        assertEq(payable(user).balance, originalBalance + pendingRewards);
+        assertEq(user.balance, originalBalance + pendingRewards);
     }
 }
