@@ -4,6 +4,7 @@ pragma solidity ^0.8.23;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
@@ -15,9 +16,9 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // dependencies.
     // =========================================================================
 
-    IERC20 public constant rewardToken = IERC20(0x77E06c9eCCf2E797fd462A92B6D7642EF85b0A44); // wTAO
     ISwapRouter public constant swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
     IUniswapV2Router02 public constant router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    IERC20Metadata public constant rewardToken = IERC20Metadata(0x77E06c9eCCf2E797fd462A92B6D7642EF85b0A44); // wTAO
 
     // =========================================================================
     // rewards management.
@@ -25,6 +26,9 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
     // numerator multiplier so tokenPerShare does not get rounded to 0.
     uint256 private constant PRECISION = 1e18;
+
+    // scale factor so reward token scales to 18 decimals.
+    uint256 private immutable SCALE_FACTOR;
 
     // the accumulated amount of reward token per share.
     uint256 private TokenPerShare;
@@ -115,6 +119,12 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC20(name, symbol) {
         marketingWallet = msg.sender;
+
+        uint8 rewardTokenDecimals = rewardToken.decimals();
+
+        require(rewardTokenDecimals <= 18, "reward token decimals must be <= 18");
+
+        SCALE_FACTOR = 10 ** (18 - rewardTokenDecimals);
     }
 
     // =========================================================================
@@ -238,11 +248,16 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     function distribute() external nonReentrant {
         require(block.number > shareholders[msg.sender].lastUpdateBlock, "update and distribute in the same block");
 
-        uint256 balance = _rewardBalance();
+        if (totalShares == 0) return;
 
-        uint256 distributed = _distribute(balance);
+        uint256 balance = _rewardBalance();
+        uint256 swappedETH = _swapTokenToETHv2(address(this), balance, 0);
+        uint256 distributed = _swapETHToERC20v3(address(this), swappedETH, 0);
 
         if (distributed == 0) return;
+
+        TokenPerShare += (distributed * SCALE_FACTOR * PRECISION) / totalShares;
+        totalTokenDistributed += distributed;
 
         emit Distribute(msg.sender, distributed);
     }
@@ -429,7 +444,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      */
     function _pendingRewards(Share memory share) private view returns (uint256) {
         uint256 RDiff = TokenPerShare - share.TokenPerShareLast;
-        uint256 earned = (share.amount * RDiff) / PRECISION;
+        uint256 earned = (share.amount * RDiff) / (SCALE_FACTOR * PRECISION);
 
         return share.earned + earned;
     }
@@ -537,22 +552,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         share.amount = balance;
         share.lastUpdateBlock = block.number;
-    }
-
-    /**
-     * Distribute the given amount of tokens as rewards.
-     */
-    function _distribute(uint256 amount) private returns (uint256) {
-        if (totalShares == 0) return 0;
-
-        uint256 swappedETH = _swapTokenToETHv2(address(this), amount, 0);
-        uint256 distributed = _swapETHToERC20v3(address(this), swappedETH, 0);
-
-        TokenPerShare += (distributed * PRECISION) / totalShares;
-
-        totalTokenDistributed += distributed;
-
-        return distributed;
     }
 
     /**
