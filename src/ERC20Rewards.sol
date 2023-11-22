@@ -269,7 +269,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
-        require(rewardFee + marketingFee <= maxBuyFee, "30% total buy fee max");
+        require(rewardFee + marketingFee <= maxBuyFee, "!maxBuyFee");
 
         buyRewardFee = rewardFee;
         buyMarketingFee = marketingFee;
@@ -277,7 +277,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setSellFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
-        require(rewardFee + marketingFee <= maxSellFee, "30% total sell fee max");
+        require(rewardFee + marketingFee <= maxSellFee, "!maxSellFee");
 
         sellRewardFee = rewardFee;
         sellMarketingFee = marketingFee;
