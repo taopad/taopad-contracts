@@ -312,7 +312,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     function _withdrawMarketing(uint256 amountToWithdraw) private {
         _marketingAmount -= amountToWithdraw;
 
-        transfer(marketingWallet, amountToWithdraw);
+        _transfer(address(this), marketingWallet, amountToWithdraw);
     }
 
     function addToBlacklist(address addr) external onlyOwner {
