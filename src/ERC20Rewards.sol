@@ -222,9 +222,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Optin for rewards when you are excluded from rewards (contracts).
      */
     function rewardOptin() external {
-        require(!isBlacklisted[msg.sender], "blacklisted");
-        require(_isExcludedFromRewards(msg.sender), "sender already included to rewards");
-
         _includeToRewards(msg.sender);
 
         isOptin[msg.sender] = true;
@@ -234,9 +231,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Optout for rewards when you are included to rewards (contracts).
      */
     function rewardOptout() external {
-        require(!isBlacklisted[msg.sender], "blacklisted");
-        require(_isExcludedFromRewards(msg.sender), "sender already excluded from rewards");
-
         _removeFromRewards(msg.sender);
 
         isOptin[msg.sender] = false;
@@ -380,8 +374,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Add the given address to blacklist.
      */
     function _addToBlacklist(address addr) private {
-        require(!isBlacklisted[addr], "already blacklisted");
-
         _removeFromRewards(addr);
 
         isBlacklisted[addr] = true;
@@ -391,8 +383,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Remove the given address from blacklist.
      */
     function _removeFromBlacklist(address addr) private {
-        require(isBlacklisted[addr], "not blacklisted");
-
         _includeToRewards(addr);
 
         isBlacklisted[addr] = false;
@@ -405,16 +395,19 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * - addresses being removed from blacklist.
      */
     function _includeToRewards(address addr) private {
+        // ensure we dont update total shares twice.
+        if (!_isExcludedFromRewards(addr)) return;
+
+        // update total shares.
         uint256 balance = balanceOf(addr);
 
+        totalShares += balance;
+
+        // restart earning from now.
         Share storage share = shareholders[addr];
 
         share.amount = balance;
-        share.earned = 0;
         share.TokenPerShareLast = TokenPerShare;
-        share.lastUpdateBlock = block.number;
-
-        totalShares += balance;
     }
 
     /**
@@ -424,9 +417,18 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * - addresses being added to blacklist.
      */
     function _removeFromRewards(address addr) private {
-        _earn(shareholders[addr]);
+        // ensure we dont update total shares twice.
+        if (_isExcludedFromRewards(addr)) return;
 
+        // update total shares.
         totalShares -= balanceOf(addr);
+
+        // make sure pending rewards are earned and stop earning (share.amount = 0)
+        Share storage share = shareholders[addr];
+
+        _earn(share);
+
+        share.amount = 0;
     }
 
     /**
@@ -539,16 +541,16 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
      * Earn first with his current share amount then update shares according to
      * its new balance.
      */
-    function _updateShare(address holder) private {
-        if (_isExcludedFromRewards(holder)) return;
+    function _updateShare(address addr) private {
+        if (_isExcludedFromRewards(addr)) return;
 
-        Share storage share = shareholders[holder];
+        uint256 balance = balanceOf(addr);
 
-        _earn(share);
-
-        uint256 balance = balanceOf(holder);
+        Share storage share = shareholders[addr];
 
         totalShares = totalShares - share.amount + balance;
+
+        _earn(share);
 
         share.amount = balance;
         share.lastUpdateBlock = block.number;
