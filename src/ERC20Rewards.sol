@@ -288,23 +288,25 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
         poolFee = _poolFee;
     }
 
-    function setMarketingWallet(address _marketingWallet) external onlyOwner {
-        marketingWallet = _marketingWallet;
+    function setMarketingWallet(address newMarketingWallet) external onlyOwner {
+        marketingWallet = newMarketingWallet;
     }
 
-    function marketingAmount() external view onlyOwner returns (uint256) {
+    function marketingAmount() external view returns (uint256) {
+        require(msg.sender == owner() || msg.sender == marketingWallet, "!marketingWallet");
+
         return _marketingAmount;
     }
 
     function withdrawMarketing() external {
-        require(msg.sender == marketingWallet, "not marketing wallet");
+        require(msg.sender == marketingWallet, "!marketingWallet");
 
         _withdrawMarketing(_marketingAmount);
     }
 
     function withdrawMarketing(uint256 amountToWithdraw) external {
-        require(msg.sender == marketingWallet, "not marketing wallet");
-        require(amountToWithdraw <= _marketingAmount, "amount must be <= currentMarketingAmount()");
+        require(msg.sender == marketingWallet, "!marketingWallet");
+        require(amountToWithdraw <= _marketingAmount, "!marketingAmount");
 
         _withdrawMarketing(amountToWithdraw);
     }
