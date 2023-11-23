@@ -269,10 +269,9 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     /**
      * Sweep any other ERC20 mistakenly sent to this contract.
      */
-    function sweep(address _token) external {
-        require(address(this) != _token, "cant sweep this token");
-
-        IERC20 token = IERC20(_token);
+    function sweep(IERC20 token) external {
+        require(address(token) != address(this), "!sweep");
+        require(address(token) != address(rewardToken), "!sweep");
 
         uint256 amount = token.balanceOf(address(this));
 
