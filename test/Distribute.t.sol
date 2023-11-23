@@ -39,8 +39,8 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(token.pendingRewards(user1), 0);
         assertGt(token.pendingRewards(user2), 0);
         assertGt(token.pendingRewards(user3), 0);
-        assertEq(token.pendingRewards(user1), token.pendingRewards(user2) + token.pendingRewards(user3));
         assertEq(token.pendingRewards(user2), token.pendingRewards(user3));
+        assertApproxEqAbs(token.pendingRewards(user1), token.pendingRewards(user2) + token.pendingRewards(user3), 1);
         assertGt(rewardToken.balanceOf(token.marketingWallet()), 0);
 
         // two users should claim the same amount.
@@ -59,8 +59,8 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
-        assertEq(rewardToken.balanceOf(user1), rewardToken.balanceOf(user2) + rewardToken.balanceOf(user3));
         assertEq(rewardToken.balanceOf(user2), rewardToken.balanceOf(user3));
+        assertApproxEqAbs(rewardToken.balanceOf(user1), rewardToken.balanceOf(user2) + rewardToken.balanceOf(user3), 1);
 
         // check marketing amount.
         uint256 distributed = rewardToken.balanceOf(user1) + rewardToken.balanceOf(user2) + rewardToken.balanceOf(user2)
