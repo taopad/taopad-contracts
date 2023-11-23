@@ -98,7 +98,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     address public marketingWallet;
 
     // amount of this token collected as marketing fee.
-    uint256 private _marketingAmount;
+    uint256 private marketingAmount;
 
     // =========================================================================
     // pool options.
@@ -166,13 +166,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     // =========================================================================
     // exposed user functions.
     // =========================================================================
-
-    /**
-     * Return the amount of reward tokens ready to swap and distribute.
-     */
-    function rewardBalance() external view returns (uint256) {
-        return _rewardBalance();
-    }
 
     /**
      * Return the amount of reward tokens the given address can claim.
@@ -244,12 +237,29 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         if (totalShares == 0) return;
 
-        uint256 balance = _rewardBalance();
+        uint256 balance = balanceOf(address(this));
+
+        if (balance == 0) return;
+
+        // swap the collected tax to reward token.
         uint256 swappedETH = _swapTokenToETHv2(address(this), balance, 0);
-        uint256 distributed = _swapETHToERC20v3(address(this), swappedETH, 0);
+        uint256 swappedERC20 = _swapETHToERC20v3(address(this), swappedETH, 0);
+
+        if (swappedERC20 == 0) return;
+
+        // take marketing tax.
+        uint256 marketing = (swappedERC20 * marketingAmount) / balance;
+        uint256 distributed = swappedERC20 - marketing;
+
+        marketingAmount = 0;
+
+        if (marketing > 0) {
+            rewardToken.transfer(marketingWallet, marketing);
+        }
 
         if (distributed == 0) return;
 
+        // distribute the rewards.
         TokenPerShare += (distributed * SCALE_FACTOR * PRECISION) / totalShares;
         totalTokenDistributed += distributed;
 
@@ -299,31 +309,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
     function setMarketingWallet(address newMarketingWallet) external onlyOwner {
         marketingWallet = newMarketingWallet;
-    }
-
-    function marketingAmount() external view returns (uint256) {
-        require(msg.sender == owner() || msg.sender == marketingWallet, "!marketingWallet");
-
-        return _marketingAmount;
-    }
-
-    function withdrawMarketing() external {
-        require(msg.sender == marketingWallet, "!marketingWallet");
-
-        _withdrawMarketing(_marketingAmount);
-    }
-
-    function withdrawMarketing(uint256 amountToWithdraw) external {
-        require(msg.sender == marketingWallet, "!marketingWallet");
-        require(amountToWithdraw <= _marketingAmount, "!marketingAmount");
-
-        _withdrawMarketing(amountToWithdraw);
-    }
-
-    function _withdrawMarketing(uint256 amountToWithdraw) private {
-        _marketingAmount -= amountToWithdraw;
-
-        _transfer(address(this), marketingWallet, amountToWithdraw);
     }
 
     function addToBlacklist(address addr) external onlyOwner {
@@ -432,13 +417,6 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
     }
 
     /**
-     * Return the amount of taxes minus marketing taxes.
-     */
-    function _rewardBalance() private view returns (uint256) {
-        return balanceOf(address(this)) - _marketingAmount;
-    }
-
-    /**
      * Compute the pending rewards of the given share.
      *
      * The rewards earned since the last transfer are added to the already earned
@@ -521,7 +499,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         // accout for the marketing fee if any.
         if (transferMarketingFeeAmount > 0) {
-            _marketingAmount += transferMarketingFeeAmount;
+            marketingAmount += transferMarketingFeeAmount;
         }
 
         // transfer the total fee amount to this contract if any.

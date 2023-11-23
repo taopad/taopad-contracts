@@ -39,12 +39,12 @@ contract FeeTest is ERC20RewardsTest {
         token.setSellFee(maxSellFee / 2, (maxSellFee / 2) + 1);
     }
 
-    function testRewardAndMarketingFee() public {
+    function testBuySellTax() public {
         address user = vm.addr(1);
 
         // put random taxes.
-        token.setBuyFee(721, 279);
-        token.setSellFee(1356, 644);
+        token.setBuyFee(721, 279); // 1000
+        token.setSellFee(1356, 644); // 2000
 
         buyToken(user, 1 ether);
 
@@ -52,22 +52,14 @@ contract FeeTest is ERC20RewardsTest {
 
         // 10% was taken on buy (so we have 90% of tokens).
         uint256 buyTax = balance / 9;
-        uint256 buyRewardTax = (buyTax * 721) / 1000;
-        uint256 buyMarketingTax = (buyTax * 279) / 1000;
 
         // 20% will be taken on sell.
         uint256 sellTax = balance / 5;
-        uint256 sellRewardTax = (sellTax * 1356) / 2000;
-        uint256 sellMarketingTax = (sellTax * 644) / 2000;
 
-        assertApproxEqRel(token.rewardBalance(), buyRewardTax, 0.01e18);
-        assertApproxEqRel(token.marketingAmount(), buyMarketingTax, 0.01e18);
-        assertEq(token.balanceOf(address(token)), token.rewardBalance() + token.marketingAmount());
+        assertApproxEqRel(token.balanceOf(address(token)), buyTax, 0.01e18);
 
         sellToken(user, balance);
 
-        assertApproxEqRel(token.rewardBalance(), buyRewardTax + sellRewardTax, 0.01e18);
-        assertApproxEqRel(token.marketingAmount(), buyMarketingTax + sellMarketingTax, 0.01e18);
-        assertEq(token.balanceOf(address(token)), token.rewardBalance() + token.marketingAmount());
+        assertApproxEqRel(token.balanceOf(address(token)), buyTax + sellTax, 0.01e18);
     }
 }

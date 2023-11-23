@@ -26,8 +26,6 @@ contract SwapTest is ERC20RewardsTest {
         rewardFee += (received1 * token.buyRewardFee()) / token.feeDenominator();
         marketingFee += (received1 * token.buyMarketingFee()) / token.feeDenominator();
 
-        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
-        assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(user), received1 - rewardFee - marketingFee, 0.01e18);
 
@@ -41,8 +39,6 @@ contract SwapTest is ERC20RewardsTest {
         marketingFee += (sent * token.sellMarketingFee()) / token.feeDenominator();
 
         // ensure collected taxes have the excpected values.
-        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
-        assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
         assertEq(token.balanceOf(user), 0);
 
@@ -54,8 +50,6 @@ contract SwapTest is ERC20RewardsTest {
         rewardFee += (received2 * token.buyRewardFee()) / token.feeDenominator();
         marketingFee += (received2 * token.buyMarketingFee()) / token.feeDenominator();
 
-        assertApproxEqRel(token.rewardBalance(), rewardFee, 0.01e18);
-        assertApproxEqRel(token.marketingAmount(), marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // test distribute is not reverting.
@@ -65,18 +59,21 @@ contract SwapTest is ERC20RewardsTest {
 
         token.distribute();
 
-        assertEq(token.rewardBalance(), 0);
-        assertGt(token.pendingRewards(user), 0);
-        assertEq(token.balanceOf(address(token)), token.marketingAmount());
-
-        // test claim is not reverting.
         uint256 pendingRewards = token.pendingRewards(user);
 
+        assertGt(pendingRewards, 0);
+        assertEq(token.balanceOf(address(token)), 0);
+        assertGt(rewardToken.balanceOf(address(token)), 0);
+
+        // test claim is not reverting.
         vm.prank(user);
 
         token.claim();
 
         assertEq(address(token).balance, 0);
         assertEq(rewardToken.balanceOf(user), pendingRewards);
+        assertLt(rewardToken.balanceOf(address(token)), 10); // some dust
+        assertGt(rewardToken.balanceOf(token.marketingWallet()), 0);
+        assertGt(pendingRewards, rewardToken.balanceOf(token.marketingWallet()));
     }
 }
