@@ -21,10 +21,9 @@ contract ERC20RewardsTest is Test {
         router = token.router();
         rewardToken = token.rewardToken();
 
-        token.initialize{value: 1000 ether}(1e7);
+        token.initialize{value: 1000 ether}(1e6);
         token.setBuyFee(400, 100);
         token.setSellFee(800, 200);
-        token.removeLimits();
 
         vm.roll(block.number + token.deadBlocks() + 1);
     }

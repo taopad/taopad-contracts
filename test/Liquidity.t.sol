@@ -10,7 +10,7 @@ contract LiquidityTest is ERC20RewardsTest {
         vm.label(provider, "Buyer");
 
         // amount for 1 ether
-        uint256 amountFor1Ether = norm(10000);
+        uint256 amountFor1Ether = norm(1000);
 
         // compute amount tax after buying 1 ether.
         uint256 rewardFee;

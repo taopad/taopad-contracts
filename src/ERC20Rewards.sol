@@ -485,7 +485,7 @@ contract ERC20Rewards is ERC20, Ownable, ReentrancyGuard {
 
         // prevents max wallet on transfer to a non pair address.
         if (!_isExcludedFromMaxWallet(to)) {
-            require(transferActualAmount + balanceOf(to) <= maxWallet, "max-wallet-reached");
+            require(transferActualAmount + balanceOf(to) <= maxWallet, "!maxWallet");
         }
 
         // add to blacklist while buying in dead block.
