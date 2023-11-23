@@ -4,7 +4,7 @@ pragma solidity ^0.8.23;
 import "forge-std/Test.sol";
 import {ERC20RewardsTest} from "./ERC20RewardsTest.t.sol";
 
-contract FeeTest is ERC20RewardsTest {
+contract DistributeTest is ERC20RewardsTest {
     function testDistribute() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
