@@ -238,33 +238,35 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         if (totalShares == 0) return;
 
-        uint256 balance = balanceOf(address(this));
+        // get the collected tax.
+        uint256 totalTaxAmount = balanceOf(address(this));
 
-        if (balance == 0) return;
+        // swap all tax for rewards if any.
+        if (totalTaxAmount > 0) {
+            // swap all tax to ETH and send it to this contract.
+            _swapTokenToETHv2(address(this), totalTaxAmount, 0);
 
-        // swap the collected tax to reward token.
-        uint256 swappedETH = _swapTokenToETHv2(address(this), balance, 0);
-        uint256 swappedERC20 = _swapETHToERC20v3(address(this), swappedETH, 0);
+            // swap all this contract ETH to rewards and send it to this contract.
+            uint256 swappedERC20 = _swapETHToERC20v3(address(this), address(this).balance, 0);
 
-        if (swappedERC20 == 0) return;
+            // collect marketing tax when something has been swapped.
+            if (swappedERC20 > 0) {
+                uint256 marketingTaxAmount = (swappedERC20 * marketingAmount) / totalTaxAmount;
 
-        // take marketing tax.
-        uint256 marketing = (swappedERC20 * marketingAmount) / balance;
-        uint256 distributed = swappedERC20 - marketing;
+                rewardToken.transfer(marketingWallet, marketingTaxAmount);
 
-        marketingAmount = 0;
-
-        if (marketing > 0) {
-            rewardToken.transfer(marketingWallet, marketing);
+                marketingAmount = 0; // reset collected marketing.
+            }
         }
 
-        if (distributed == 0) return;
+        // distribute the rewards (full balance of contract - whats remaining to claim).
+        uint256 amountToClaim = totalTokenDistributed - totalTokenClaimed;
+        uint256 amountToDistribute = rewardToken.balanceOf(address(this)) - amountToClaim;
 
-        // distribute the rewards.
-        TokenPerShare += (distributed * SCALE_FACTOR * PRECISION) / totalShares;
-        totalTokenDistributed += distributed;
+        TokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
+        totalTokenDistributed += amountToDistribute;
 
-        emit Distribute(msg.sender, distributed);
+        emit Distribute(msg.sender, amountToDistribute);
     }
 
     /**
