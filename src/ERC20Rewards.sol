@@ -251,6 +251,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
             // collect marketing tax when something has been swapped.
             if (swappedERC20 > 0) {
+                // marketing amount is always <= total tax amount.
                 uint256 marketingTaxAmount = (swappedERC20 * marketingAmount) / totalTaxAmount;
 
                 rewardToken.transfer(marketingWallet, marketingTaxAmount);
@@ -262,6 +263,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         // distribute the rewards (full balance of contract - whats remaining to claim).
         uint256 amountToClaim = totalTokenDistributed - totalTokenClaimed;
         uint256 amountToDistribute = rewardToken.balanceOf(address(this)) - amountToClaim;
+
+        if (amountToDistribute == 0) return;
 
         TokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
         totalTokenDistributed += amountToDistribute;
