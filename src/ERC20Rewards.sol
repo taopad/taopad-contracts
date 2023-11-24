@@ -364,9 +364,12 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     /**
      * Return addresses excluded from max wallet limit (= this contract, routers or pairs).
+     *
+     * Blacklisted addresses are excluded too so they can buy as much as they want.
      */
     function _isExcludedFromMaxWallet(address addr) private view returns (bool) {
-        return addr == address(this) || addr == address(router) || addr == address(swapRouter) || pairs[addr];
+        return addr == address(this) || addr == address(router) || addr == address(swapRouter) || pairs[addr]
+            || isBlacklisted[addr];
     }
 
     /**
@@ -518,14 +521,14 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         // compute the actual amount sent to receiver.
         uint256 transferActualAmount = amount - transferTotalFeeAmount;
 
-        // prevents max wallet for regular addresses.
-        if (!_isExcludedFromMaxWallet(to)) {
-            require(transferActualAmount + balanceOf(to) <= maxWallet, "!maxWallet");
-        }
-
         // add to blacklist while buying in dead block.
         if (isTaxedBuy && _isDeadBlock()) {
             _addToBlacklist(to);
+        }
+
+        // prevents max wallet for regular addresses.
+        if (!_isExcludedFromMaxWallet(to)) {
+            require(transferActualAmount + balanceOf(to) <= maxWallet, "!maxWallet");
         }
 
         // transfer the actual amount.
