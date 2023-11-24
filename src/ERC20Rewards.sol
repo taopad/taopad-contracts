@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
@@ -13,6 +14,9 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+    using SafeERC20 for IERC20Metadata;
+
     // =========================================================================
     // dependencies.
     // =========================================================================
@@ -201,7 +205,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         totalTokenClaimed += claimed;
 
-        rewardToken.transfer(msg.sender, claimed);
+        rewardToken.safeTransfer(msg.sender, claimed);
 
         emit Claim(msg.sender, claimed);
     }
@@ -270,7 +274,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
                 // marketing amount is always <= total tax amount.
                 uint256 marketing = (swappedRewards * marketingAmount) / totalTaxAmount;
 
-                rewardToken.transfer(marketingWallet, marketing);
+                rewardToken.safeTransfer(marketingWallet, marketing);
 
                 marketingAmount = 0; // reset collected marketing.
             }
@@ -296,7 +300,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         uint256 amount = token.balanceOf(address(this));
 
-        token.transfer(msg.sender, amount);
+        token.safeTransfer(msg.sender, amount);
     }
 
     // =========================================================================
