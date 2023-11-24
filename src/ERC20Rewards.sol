@@ -105,7 +105,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // pool options.
     // =========================================================================
 
-    uint24 poolFee = 10000; // works for wTAO
+    uint24 public poolFee = 10000; // works for wTAO
 
     // =========================================================================
     // Events.
