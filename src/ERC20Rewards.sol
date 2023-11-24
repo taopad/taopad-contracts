@@ -115,6 +115,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // Events.
     // =========================================================================
 
+    event OptIn(address addr);
+    event OptOut(address addr);
+    event AddToBlacklist(address addr);
+    event RemoveFromBlacklist(address addr);
     event Claim(address indexed to, uint256 amount);
     event Distribute(address indexed from, uint256 amount);
 
@@ -239,6 +243,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         _includeToRewards(msg.sender);
 
         isOptin[msg.sender] = true;
+
+        emit OptIn(msg.sender);
     }
 
     /**
@@ -248,6 +254,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         _removeFromRewards(msg.sender);
 
         isOptin[msg.sender] = false;
+
+        emit OptOut(msg.sender);
     }
 
     /**
@@ -385,6 +393,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         _removeFromRewards(addr);
 
         isBlacklisted[addr] = true;
+
+        emit AddToBlacklist(addr);
     }
 
     /**
@@ -394,6 +404,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         _includeToRewards(addr);
 
         isBlacklisted[addr] = false;
+
+        emit RemoveFromBlacklist(addr);
     }
 
     /**
