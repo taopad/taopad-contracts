@@ -169,6 +169,22 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
+     * Return the amount of reward token ready to be distributed.
+     *
+     * == balance of reward token minus what's not claimed yet.
+     *
+     * Allows to expose reward token donations to this contract.
+     *
+     * When a distribution occurs, the tax is swapped to reward token
+     * and this value grows.
+     */
+    function rewardBalance() public view returns (uint256) {
+        uint256 amountToClaim = totalTokenDistributed - totalTokenClaimed;
+
+        return rewardToken.balanceOf(address(this)) - amountToClaim;
+    }
+
+    /**
      * Return the amount of reward tokens the given address can claim.
      */
     function pendingRewards(address addr) external view returns (uint256) {
@@ -247,22 +263,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
             _swapTokenToETHv2(address(this), totalTaxAmount, 0);
 
             // swap all this contract ETH to rewards and send it to this contract.
-            uint256 swappedERC20 = _swapETHToERC20v3(address(this), address(this).balance, 0);
+            uint256 swappedRewards = _swapETHToERC20v3(address(this), address(this).balance, 0);
 
             // collect marketing tax when something has been swapped.
-            if (swappedERC20 > 0) {
+            if (swappedRewards > 0) {
                 // marketing amount is always <= total tax amount.
-                uint256 marketingTaxAmount = (swappedERC20 * marketingAmount) / totalTaxAmount;
+                uint256 marketing = (swappedRewards * marketingAmount) / totalTaxAmount;
 
-                rewardToken.transfer(marketingWallet, marketingTaxAmount);
+                rewardToken.transfer(marketingWallet, marketing);
 
                 marketingAmount = 0; // reset collected marketing.
             }
         }
 
-        // distribute the rewards (full balance of contract - whats remaining to claim).
-        uint256 amountToClaim = totalTokenDistributed - totalTokenClaimed;
-        uint256 amountToDistribute = rewardToken.balanceOf(address(this)) - amountToClaim;
+        // distribute the available rewards (swapped tax + reward token donations).
+        uint256 amountToDistribute = rewardBalance();
 
         if (amountToDistribute == 0) return;
 
