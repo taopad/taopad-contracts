@@ -9,7 +9,7 @@ contract Deploy is Script {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
         vm.startBroadcast(deployerPrivateKey);
-        new ERC20Rewards("Niera Token", "NTKN");
+        new ERC20Rewards("TaoPad", "TaoPad");
         vm.stopBroadcast();
     }
 }
