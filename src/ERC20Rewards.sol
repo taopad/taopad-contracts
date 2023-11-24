@@ -95,10 +95,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // marketing.
     // =========================================================================
 
-    // address where collected marketing fees are sent.
+    // address where marketing tax is sent.
     address public marketingWallet;
 
-    // amount of this token collected as marketing fee.
+    // amount of this token collected as marketing tax.
     uint256 private marketingAmount;
 
     // =========================================================================
@@ -151,7 +151,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         maxWallet = _totalSupply / 100;
 
         // create an amm pair with WETH.
-        // pair gets automatically excluded from rewards.
+        // as a contract, pair is automatically excluded from rewards.
         createAmmPairWith(router.WETH());
 
         // mint total supply to this contract.
@@ -327,8 +327,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         poolFee = _poolFee;
     }
 
-    function setMarketingWallet(address newMarketingWallet) external onlyOwner {
-        marketingWallet = newMarketingWallet;
+    function setMarketingWallet(address _marketingWallet) external onlyOwner {
+        marketingWallet = _marketingWallet;
     }
 
     function addToBlacklist(address addr) external onlyOwner {
@@ -344,22 +344,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Return whether current block is a dead block (= get blacklisted when buying
-     * in a dead block).
+     * Return whether current block is a dead block (= blacklisted when buying in a dead block).
      */
     function _isDeadBlock() private view returns (bool) {
         return block.number <= startBlock + deadBlocks;
     }
 
     /**
-     * Return addresses excluded from max wallet limit (= this contract, router or pairs).
+     * Return addresses excluded from max wallet limit (= this contract, routers or pairs).
      */
     function _isExcludedFromMaxWallet(address addr) private view returns (bool) {
         return addr == address(this) || addr == address(router) || addr == address(swapRouter) || pairs[addr];
     }
 
     /**
-     * Return adresses excluded from taxes (= this contract address or router).
+     * Return adresses excluded from taxes (= this contract or routers).
      */
     function _isExcludedFromTaxes(address addr) private view returns (bool) {
         return address(this) == addr || address(router) == addr || address(swapRouter) == addr;
@@ -479,10 +478,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * - transfers from/to uniswap router are not taxed.
      * - addresses buying in a deadblock are blacklisted and cant transfer tokens anymore.
      * - prevent receiving address to get more than max wallet.
-     * - marketing fees are collected and distributed here.
-     * - taxes are sent to this very contract.
+     * - marketing fees are accounted here.
+     * - taxed tokens are sent to this very contract.
      * - updates the shares of both the from and to addresses.
-     * - if this is a sell, distribute if rewards are above threshold.
      */
     function _update(address from, address to, uint256 amount) internal override {
         // blacklisted addresses cant transfer tokens.
@@ -504,7 +502,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         // compute the actual amount sent to receiver.
         uint256 transferActualAmount = amount - transferTotalFeeAmount;
 
-        // prevents max wallet on transfer to a non pair address.
+        // prevents max wallet for regular addresses.
         if (!_isExcludedFromMaxWallet(to)) {
             require(transferActualAmount + balanceOf(to) <= maxWallet, "!maxWallet");
         }
@@ -555,7 +553,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Sell amount of tokens for ETH to the given address and return the amount received.
+     * Swap amount of tokens for ETH to address and return the amount received.
      */
     function _swapTokenToETHv2(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
         // return 0 if no amount given.
@@ -579,7 +577,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Sell amountof ETH for reward tokens to the given address and return the amount received.
+     * Swap amount of ETH for reward tokens to address and return the amount received.
      */
     function _swapETHToERC20v3(address to, uint256 amountIn, uint256 amountOutMinimum) private returns (uint256) {
         // return 0 if no amount given.
@@ -602,7 +600,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * This contract cant receive ETH.
+     * This contract cant receive ETH except from routers and pairs.
      */
     receive() external payable {
         require(
