@@ -89,7 +89,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // Anti-bot and limitations
     // =========================================================================
 
-    uint256 public maxWallet;
+    uint256 public maxWallet = type(uint256).max; // set to 1% in ininitialize
     uint256 public startBlock = 0;
     uint256 public deadBlocks = 2;
 
@@ -127,8 +127,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC20(name, symbol) {
+        // marketing wallet is deployer by default.
         marketingWallet = msg.sender;
 
+        // set the reward token scale factor.
         uint8 rewardTokenDecimals = rewardToken.decimals();
 
         require(rewardTokenDecimals <= 18, "reward token decimals must be <= 18");
@@ -141,35 +143,65 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Initialize the contract by minting tokens and adding initial liquidity.
+     * Initialize the contract by creating the liquidy pool.
      *
      * It adds the total supply of the token with the sent ETH.
      *
      * LP tokens are sent to owner.
      */
     function initialize(uint256 _rawTotalSupply) external payable onlyOwner {
-        require(startBlock == 0, "already initialized");
+        address[] memory addrs = new address[](0);
+        uint256[] memory allocs = new uint256[](0);
 
-        startBlock = block.number;
+        _initialize(_rawTotalSupply, addrs, allocs);
+    }
 
-        // get total supply.
-        uint256 _totalSupply = _rawTotalSupply * 10 ** decimals();
+    function initialize(uint256 _rawTotalSupply, address[] memory addrs, uint256[] memory allocs)
+        external
+        payable
+        onlyOwner
+    {
+        _initialize(_rawTotalSupply, addrs, allocs);
+    }
 
-        // init max wallet to 1%.
-        maxWallet = _totalSupply / 100;
+    function _initialize(uint256 _rawTotalSupply, address[] memory addrs, uint256[] memory allocs) private {
+        require(msg.value > 0, "!liquidity");
+        require(startBlock == 0, "!initialized");
+        require(addrs.length == allocs.length, "!allocations");
+
+        // get the token decimal const.
+        uint256 decimalConst = 10 ** decimals();
+
+        // mint total supply to this contract.
+        uint256 _totalSupply = _rawTotalSupply * decimalConst;
+
+        _mint(address(this), _totalSupply);
+
+        // distribute allocations.
+        uint8 nbAllocs = uint8(addrs.length);
+
+        for (uint8 i = 0; i < nbAllocs; i++) {
+            _transfer(address(this), addrs[i], allocs[i] * decimalConst);
+        }
+
+        // the remaining balance will be put in the LP.
+        uint256 balance = balanceOf(address(this));
 
         // create an amm pair with WETH.
         // as a contract, pair is automatically excluded from rewards.
         createAmmPairWith(router.WETH());
 
-        // mint total supply to this contract.
-        _mint(address(this), _totalSupply);
-
-        // approve router to use total supply.
-        _approve(address(this), address(router), _totalSupply);
+        // approve router to use total balance.
+        _approve(address(this), address(router), balance);
 
         // add liquidity and send LP to owner.
-        router.addLiquidityETH{value: msg.value}(address(this), _totalSupply, 0, 0, msg.sender, block.timestamp);
+        router.addLiquidityETH{value: msg.value}(address(this), balance, 0, 0, msg.sender, block.timestamp);
+
+        // start deadblocks from there.
+        startBlock = block.number;
+
+        // init max wallet to 1%.
+        maxWallet = _totalSupply / 100;
     }
 
     // =========================================================================
