@@ -11,6 +11,10 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {ERC20Rewards} from "./ERC20Rewards.sol";
 
+/// @title ERC20 rewards compounder
+/// @author @niera26
+/// @notice compounder for ERC20Rewards
+/// @notice source: https://github.com/niera26/erc20-rewards-contracts
 contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     // cache the ERC20Rewards values.
     ERC20Rewards private immutable token;

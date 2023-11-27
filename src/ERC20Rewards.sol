@@ -13,6 +13,10 @@ import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
+/// @title ERC20 rewards
+/// @author @niera26
+/// @notice buy and sell tax on this token with rewardToken as rewards
+/// @notice source: https://github.com/niera26/erc20-rewards-contracts
 contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeERC20 for IERC20Metadata;
