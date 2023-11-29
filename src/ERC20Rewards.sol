@@ -317,7 +317,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
             _swapTokenToETHV2(address(this), totalTaxAmount, 0);
 
             // swap all this contract ETH to rewards and send it to this contract.
-            uint256 swappedRewards = _swapETHToERC20V3(address(this), address(this).balance, 0);
+            uint256 swappedRewards = _swapETHToRewardV3(address(this), address(this).balance, 0);
 
             // collect marketing tax when something has been swapped.
             if (swappedRewards > 0) {
@@ -628,7 +628,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     /**
      * Swap amount of ETH for reward tokens to address and return the amount received.
      */
-    function _swapETHToERC20V3(address to, uint256 amountIn, uint256 amountOutMinimum) private returns (uint256) {
+    function _swapETHToRewardV3(address to, uint256 amountIn, uint256 amountOutMinimum) private returns (uint256) {
         // return 0 if no amount given.
         if (amountIn == 0) return 0;
 
