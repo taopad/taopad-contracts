@@ -39,8 +39,8 @@ contract SwapTest is ERC20RewardsTest {
         marketingFee += (sent * token.sellMarketingFee()) / token.feeDenominator();
 
         // ensure collected taxes have the excpected values.
-        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
         assertEq(token.balanceOf(user), 0);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // must buy again otherwise theres 0 share and then 0 distribution.
         uint256 received2 = amountFor1Ether;

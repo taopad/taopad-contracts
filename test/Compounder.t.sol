@@ -335,7 +335,7 @@ contract CompounderTest is ERC20RewardsTest {
         assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
     }
 
-    function testCompoundSweep() public {
+    function testCompounderSweep() public {
         IERC20 randomToken = new ERC20Mock(1000);
 
         address user = vm.addr(1);

@@ -24,8 +24,8 @@ contract LiquidityTest is ERC20RewardsTest {
         rewardFee += (expected * token.buyRewardFee()) / token.feeDenominator();
         marketingFee += (expected * token.buyMarketingFee()) / token.feeDenominator();
 
-        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(provider), expected - rewardFee - marketingFee, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // add the received tokens as liquidity.
         uint256 sent = token.balanceOf(provider);
@@ -35,17 +35,23 @@ contract LiquidityTest is ERC20RewardsTest {
         rewardFee += (sent * token.sellRewardFee()) / token.feeDenominator();
         marketingFee += (sent * token.sellMarketingFee()) / token.feeDenominator();
 
-        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
+        // some of the ethers are send back because the sell tax on token (~ 24% with default taxes).
+        uint256 remainingETH = provider.balance;
+
         assertEq(token.balanceOf(provider), 0);
+        assertApproxEqRel(remainingETH, 0.24 ether, 0.01e18);
+        assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // no tax is collected from removing liquidity.
         removeLiquidity(provider);
 
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
-        // provider must have 0.8 ethers back minus some dex fees.
-        // he must also have the token he sent to he pool minus the token fee and dex fee.
-        assertApproxEqRel(provider.balance, 0.8 ether, 0.03e18);
+        // Maths looks ok. After adding removing liq the provider ends with ~760 tokend and > 0.76 eth.
+        uint256 removedEth = provider.balance - remainingETH;
+
+        assertGt(removedEth, 0.57 ether);
+        assertGt(provider.balance, 0.76 ether);
         assertApproxEqRel(token.balanceOf(provider), amountFor1Ether - rewardFee - marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 

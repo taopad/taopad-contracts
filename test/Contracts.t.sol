@@ -19,6 +19,10 @@ contract DummyContract {
     function rewardOptout() external {
         token.rewardOptout();
     }
+
+    function claim() external {
+        token.claim();
+    }
 }
 
 contract ContractsTest is ERC20RewardsTest {
@@ -84,5 +88,17 @@ contract ContractsTest is ERC20RewardsTest {
 
         assertGt(token.pendingRewards(user), userPendingRewards);
         assertEq(token.pendingRewards(address(dummy)), contractPendingRewards);
+
+        userPendingRewards = token.pendingRewards(user);
+
+        // ensure both can claim.
+        vm.prank(user);
+
+        token.claim();
+
+        dummy.claim();
+
+        assertEq(rewardToken.balanceOf(user), userPendingRewards);
+        assertEq(rewardToken.balanceOf(address(dummy)), contractPendingRewards);
     }
 }

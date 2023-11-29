@@ -33,7 +33,8 @@ contract DistributeTest is ERC20RewardsTest {
 
         token.transfer(user3, quarter);
 
-        // two users should get the same rewards.
+        // users with same shares should get same rewards.
+        // user with twice more shares should get twice more rewards.
         token.distribute();
 
         assertGt(token.pendingRewards(user1), 0);
@@ -43,7 +44,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertApproxEqAbs(token.pendingRewards(user1), token.pendingRewards(user2) + token.pendingRewards(user3), 1);
         assertGt(rewardToken.balanceOf(token.marketingWallet()), 0);
 
-        // two users should claim the same amount.
+        // claim everything.
         vm.prank(user1);
 
         token.claim();
@@ -56,11 +57,13 @@ contract DistributeTest is ERC20RewardsTest {
 
         token.claim();
 
+        assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
         assertEq(rewardToken.balanceOf(user2), rewardToken.balanceOf(user3));
         assertApproxEqAbs(rewardToken.balanceOf(user1), rewardToken.balanceOf(user2) + rewardToken.balanceOf(user3), 1);
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
 
         // check marketing amount.
         uint256 distributed = rewardToken.balanceOf(user1) + rewardToken.balanceOf(user2) + rewardToken.balanceOf(user2)
@@ -69,15 +72,20 @@ contract DistributeTest is ERC20RewardsTest {
         assertApproxEqRel(rewardToken.balanceOf(token.marketingWallet()), distributed / 5, 0.01e18);
     }
 
-    function testDistributeMoreToken() public {
+    function testDistributeTokenDonations() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
         address user3 = vm.addr(3);
 
-        // get some rewards token.
+        // get some token.
         buyToken(user1, 1 ether);
         buyToken(user2, 1 ether);
         buyToken(user3, 1 ether);
+
+        // token has some taxes already.
+        uint256 originalTaxAmount = token.balanceOf(address(token));
+
+        assertGt(originalTaxAmount, 0);
 
         // anyone can send tokens to the contract.
         uint256 balance1 = token.balanceOf(user1);
@@ -98,7 +106,10 @@ contract DistributeTest is ERC20RewardsTest {
 
         token.transfer(address(token), balance3 / 2);
 
-        // rewards should be distributed.
+        // token should have more than original tax amount.
+        assertGt(token.balanceOf(address(token)), originalTaxAmount);
+
+        // everything should be distributed.
         token.distribute();
 
         vm.prank(user1);
@@ -113,36 +124,27 @@ contract DistributeTest is ERC20RewardsTest {
 
         token.claim();
 
+        assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
-        //assertEq(token.balanceOf(address(token)), 0);
-        //assertEq(rewardToken.balanceOf(address(token)), 0);
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
     }
 
-    function testDistributeMoreRewardToken() public {
+    function testDistributeRewardDonations() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
         address user3 = vm.addr(3);
 
-        // get some rewards token.
+        // get some token.
         buyToken(user1, 1 ether);
         buyToken(user2, 1 ether);
         buyToken(user3, 1 ether);
 
-        token.distribute();
-
-        vm.prank(user1);
-
-        token.claim();
-
-        vm.prank(user2);
-
-        token.claim();
-
-        vm.prank(user3);
-
-        token.claim();
+        // get some reward token.
+        buyRewardToken(user1, 1 ether);
+        buyRewardToken(user2, 1 ether);
+        buyRewardToken(user3, 1 ether);
 
         // anyone can send reward tokens to the contract.
         uint256 rewardTokenBalance1 = rewardToken.balanceOf(user1);
@@ -178,9 +180,11 @@ contract DistributeTest is ERC20RewardsTest {
 
         token.claim();
 
+        assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
 
         // collect more taxes.
         buyToken(user1, 1 ether);
@@ -221,8 +225,54 @@ contract DistributeTest is ERC20RewardsTest {
 
         token.claim();
 
+        assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
+    }
+
+    function testRevertUpdateAndDistributeSameBlock() public {
+        address user1 = vm.addr(1);
+        address user2 = vm.addr(2);
+
+        buyToken(user1, 1 ether);
+
+        // revert after buy.
+        vm.prank(user1);
+
+        vm.expectRevert("update and distribute in the same block");
+
+        token.distribute();
+
+        // revert after transfer.
+        uint256 balance1 = token.balanceOf(user1);
+
+        vm.prank(user1);
+
+        token.transfer(user2, balance1);
+
+        vm.prank(user1);
+
+        vm.expectRevert("update and distribute in the same block");
+
+        token.distribute();
+
+        vm.prank(user2);
+
+        vm.expectRevert("update and distribute in the same block");
+
+        token.distribute();
+
+        // do not revert on next block.
+        vm.roll(block.number + 1);
+
+        vm.prank(user1);
+
+        token.distribute();
+
+        vm.prank(user2);
+
+        token.distribute();
     }
 }

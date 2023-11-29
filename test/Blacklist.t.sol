@@ -114,11 +114,16 @@ contract BlacklistTest is ERC20RewardsTest {
         uint256 balance = token.balanceOf(user1);
 
         assertGt(balance, 0);
+        assertEq(token.totalShares(), 0);
 
         // blacklisted user cant sell.
         vm.prank(user1);
 
-        vm.expectRevert();
+        token.approve(address(router), balance);
+
+        vm.prank(user1);
+
+        vm.expectRevert("TransferHelper: TRANSFER_FROM_FAILED");
 
         router.swapExactTokensForETHSupportingFeeOnTransferTokens(balance, 0, path, user1, block.timestamp);
 
@@ -136,25 +141,31 @@ contract BlacklistTest is ERC20RewardsTest {
         // remove user from blacklist.
         token.removeFromBlacklist(user1);
 
+        assertEq(token.totalShares(), balance);
+
         // he can now sell.
+        uint256 sellAmount = balance / 2;
+        uint256 remainingAmount = balance - sellAmount;
+
         vm.prank(user1);
 
-        token.approve(address(router), balance / 2);
+        token.approve(address(router), sellAmount);
 
         vm.prank(user1);
 
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(balance / 2, 0, path, user1, block.timestamp);
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(sellAmount, 0, path, user1, block.timestamp);
 
-        assertEq(token.balanceOf(user1), balance - (balance / 2));
+        assertEq(token.balanceOf(user1), remainingAmount);
+        assertEq(token.totalShares(), remainingAmount);
 
         // he can now transfer.
-        balance = token.balanceOf(user1);
-
         vm.prank(user1);
 
-        token.transfer(user2, balance);
+        token.transfer(user2, remainingAmount);
 
         assertEq(token.balanceOf(user1), 0);
+        assertEq(token.balanceOf(user2), remainingAmount);
+        assertEq(token.totalShares(), remainingAmount);
     }
 
     function testBlacklistDistribution() public {
@@ -247,6 +258,6 @@ contract BlacklistTest is ERC20RewardsTest {
         assertEq(rewardToken.balanceOf(user3), pendingRewards3);
 
         // only dust should stay in contract balance.
-        assertLt(rewardToken.balanceOf(address(token)), 1e6);
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3);
     }
 }
