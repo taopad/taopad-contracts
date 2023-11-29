@@ -239,15 +239,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * Claim reward tokens.
      */
     function claim() external nonReentrant {
-        uint256 claimed = _claim(shareholders[msg.sender]);
+        Share storage share = shareholders[msg.sender];
 
-        if (claimed == 0) return;
+        _earn(share);
 
-        totalTokenClaimed += claimed;
+        uint256 amountToClaim = share.earned;
 
-        rewardToken.safeTransfer(msg.sender, claimed);
+        if (amountToClaim == 0) return;
 
-        emit Claim(msg.sender, claimed);
+        share.earned = 0;
+
+        totalTokenClaimed += amountToClaim;
+
+        rewardToken.safeTransfer(msg.sender, amountToClaim);
+
+        emit Claim(msg.sender, amountToClaim);
     }
 
     /**
@@ -511,18 +517,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         share.earned = pending;
         share.TokenPerShareLast = TokenPerShare;
-    }
-
-    /**
-     * Claim the rewards of the given share and return the claim amount.
-     */
-    function _claim(Share storage share) private returns (uint256) {
-        uint256 pending = _pendingRewards(share);
-
-        share.earned = 0;
-        share.TokenPerShareLast = TokenPerShare;
-
-        return pending;
     }
 
     /**
