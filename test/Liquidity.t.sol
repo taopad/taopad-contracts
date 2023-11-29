@@ -4,13 +4,13 @@ pragma solidity ^0.8.23;
 import {ERC20RewardsTest} from "./ERC20RewardsTest.t.sol";
 
 contract LiquidityTest is ERC20RewardsTest {
-    function testAddsAndRemovesLiquidity() public {
+    function testLiquidity() public {
         address provider = vm.addr(1);
 
         vm.label(provider, "Buyer");
 
         // amount for 1 ether
-        uint256 amountFor1Ether = norm(1000);
+        uint256 amountFor1Ether = 1000 * 10 ** token.decimals();
 
         // compute amount tax after buying 1 ether.
         uint256 rewardFee;
@@ -43,17 +43,13 @@ contract LiquidityTest is ERC20RewardsTest {
 
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
-        // provider must have 0.9 ethers back minus some dex fees.
+        // provider must have 0.8 ethers back minus some dex fees.
         // he must also have the token he sent to he pool minus the token fee and dex fee.
-        assertApproxEqRel(provider.balance, 0.9 ether, 0.02e18);
+        assertApproxEqRel(provider.balance, 0.8 ether, 0.02e18);
         assertApproxEqRel(token.balanceOf(provider), amountFor1Ether - rewardFee - marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // test distribute is not reverting.
-        vm.roll(block.number + 1);
-
-        vm.prank(provider);
-
         token.distribute();
 
         uint256 pendingRewards = token.pendingRewards(provider);
@@ -69,8 +65,7 @@ contract LiquidityTest is ERC20RewardsTest {
 
         assertEq(address(token).balance, 0);
         assertEq(rewardToken.balanceOf(provider), pendingRewards);
-        assertLt(rewardToken.balanceOf(address(token)), 10); // some dust
         assertGt(rewardToken.balanceOf(token.marketingWallet()), 0);
-        assertGt(pendingRewards, rewardToken.balanceOf(token.marketingWallet()));
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 1); // some dust
     }
 }

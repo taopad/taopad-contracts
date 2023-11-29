@@ -28,8 +28,6 @@ contract ERC20RewardsTest is Test {
         rewardToken = token.rewardToken();
 
         token.initialize{value: 1000 ether}(1e6);
-        token.setBuyFee(400, 100);
-        token.setSellFee(800, 200);
 
         vm.roll(block.number + token.deadBlocks() + 1);
     }
@@ -105,11 +103,6 @@ contract ERC20RewardsTest is Test {
         vm.prank(addr);
 
         swapRouter.exactInputSingle{value: amountIn}(params);
-    }
-
-    // normalize given amount with token decimals.
-    function norm(uint256 amount) internal view returns (uint256) {
-        return amount * 10 ** token.decimals();
     }
 
     receive() external payable {}

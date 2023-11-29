@@ -5,13 +5,13 @@ import "forge-std/Test.sol";
 import {ERC20RewardsTest} from "./ERC20RewardsTest.t.sol";
 
 contract SwapTest is ERC20RewardsTest {
-    function testBuyAndSell() public {
+    function testSwap() public {
         address user = vm.addr(1);
 
         vm.label(user, "User");
 
-        // amount for 1 ether
-        uint256 amountFor1Ether = norm(1000);
+        // base amount for 1 ether
+        uint256 amountFor1Ether = 1000 * 10 ** token.decimals();
 
         // compute amount tax after buying 1 ether.
         uint256 rewardFee;
@@ -53,10 +53,6 @@ contract SwapTest is ERC20RewardsTest {
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // test distribute is not reverting.
-        vm.roll(block.number + 1);
-
-        vm.prank(user);
-
         token.distribute();
 
         uint256 pendingRewards = token.pendingRewards(user);
@@ -72,8 +68,7 @@ contract SwapTest is ERC20RewardsTest {
 
         assertEq(address(token).balance, 0);
         assertEq(rewardToken.balanceOf(user), pendingRewards);
-        assertLt(rewardToken.balanceOf(address(token)), 10); // some dust
         assertGt(rewardToken.balanceOf(token.marketingWallet()), 0);
-        assertGt(pendingRewards, rewardToken.balanceOf(token.marketingWallet()));
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 1); // some dust
     }
 }

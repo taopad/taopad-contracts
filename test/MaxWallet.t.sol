@@ -16,17 +16,17 @@ contract MaxWalletTest is ERC20RewardsTest {
         path[0] = router.WETH();
         path[1] = address(token);
 
-        vm.deal(user1, 11 ether);
+        vm.deal(user1, 14 ether);
 
         vm.prank(user1);
 
         vm.expectRevert("UniswapV2: TRANSFER_FAILED");
 
-        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: 11 ether}(0, path, user1, block.timestamp);
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: 14 ether}(0, path, user1, block.timestamp);
 
         // user dant be transfered more than 1% of supply.
         buyToken(user2, 1 ether);
-        buyToken(user3, 10 ether);
+        buyToken(user3, 13 ether);
 
         uint256 balance1 = token.balanceOf(user2);
         uint256 balance2 = token.balanceOf(user3);
@@ -51,7 +51,7 @@ contract MaxWalletTest is ERC20RewardsTest {
         // owner can remove limits.
         token.removeLimits();
 
-        buyToken(user1, 11 ether);
+        buyToken(user1, 14 ether);
 
         assertGt(token.balanceOf(user1), token.totalSupply() / 100);
 
