@@ -123,8 +123,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     event OptOut(address addr);
     event AddToBlacklist(address addr);
     event RemoveFromBlacklist(address addr);
-    event Claim(address indexed to, uint256 amount);
-    event Distribute(address indexed from, uint256 amount);
+    event Claim(address indexed addr, uint256 amount);
+    event Distribute(address indexed addr, uint256 amount);
+    event Sweep(address indexed addr, address indexed token, uint256 amount);
 
     // =========================================================================
     // constructor.
@@ -351,6 +352,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 amount = otherToken.balanceOf(address(this));
 
         otherToken.safeTransfer(msg.sender, amount);
+
+        emit Sweep(msg.sender, address(otherToken), amount);
     }
 
     // =========================================================================

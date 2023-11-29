@@ -37,6 +37,7 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
 
     // events.
     event Compound(address indexed addr, uint256 rewards, uint256 assets);
+    event Sweep(address indexed addr, address indexed token, uint256 amount);
 
     /**
      * Cache ERC20Rewards values and optin for rewards so this contract earn rewards.
@@ -137,6 +138,8 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
         uint256 amount = otherToken.balanceOf(address(this));
 
         otherToken.safeTransfer(msg.sender, amount);
+
+        emit Sweep(msg.sender, address(otherToken), amount);
     }
 
     /**
