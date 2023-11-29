@@ -3,7 +3,7 @@ pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-import {ERC20RewardsTest} from "./ERC20RewardsTest.t.sol";
+import {ERC20RewardsTest, ERC20Mock} from "./ERC20RewardsTest.t.sol";
 
 contract CompounderTest is ERC20RewardsTest {
     struct AutocompoundUser {
@@ -333,5 +333,71 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(compounder.balanceOf(user2.addr), 0);
         assertEq(compounder.balanceOf(user3.addr), 0);
         assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
+    }
+
+    function testCompoundSweep() public {
+        IERC20 randomToken = new ERC20Mock(1000);
+
+        address user = vm.addr(1);
+
+        // put token and reward token in the contract.
+        buyToken(user, 1 ether);
+        buyRewardToken(user, 1 ether);
+
+        vm.startPrank(user);
+        token.transfer(address(compounder), token.balanceOf(address(user)));
+        rewardToken.transfer(address(compounder), rewardToken.balanceOf(address(user)));
+        vm.stopPrank();
+
+        assertGt(token.balanceOf(address(compounder)), 0);
+        assertGt(rewardToken.balanceOf(address(compounder)), 0);
+
+        // owner cant sweep token.
+        vm.expectRevert("!sweep");
+
+        compounder.sweep(token);
+
+        // owner cant sweep reward token.
+        vm.expectRevert("!sweep");
+
+        compounder.sweep(rewardToken);
+
+        // user cant sweep token.
+        vm.prank(user);
+
+        vm.expectRevert("!sweep");
+
+        compounder.sweep(token);
+
+        // user cant sweep reward token.
+        vm.prank(user);
+
+        vm.expectRevert("!sweep");
+
+        compounder.sweep(rewardToken);
+
+        // owner can sweep random token.
+        randomToken.transfer(address(compounder), 1000);
+
+        assertEq(randomToken.balanceOf(address(this)), 0);
+        assertEq(randomToken.balanceOf(address(compounder)), 1000);
+
+        compounder.sweep(randomToken);
+
+        assertEq(randomToken.balanceOf(address(this)), 1000);
+        assertEq(randomToken.balanceOf(address(compounder)), 0);
+
+        // user can sweep random token.
+        randomToken.transfer(address(compounder), 1000);
+
+        assertEq(randomToken.balanceOf(address(user)), 0);
+        assertEq(randomToken.balanceOf(address(compounder)), 1000);
+
+        vm.prank(user);
+
+        compounder.sweep(randomToken);
+
+        assertEq(randomToken.balanceOf(address(user)), 1000);
+        assertEq(randomToken.balanceOf(address(compounder)), 0);
     }
 }

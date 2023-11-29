@@ -344,13 +344,13 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     /**
      * Sweep any other ERC20 mistakenly sent to this contract.
      */
-    function sweep(IERC20 token) external {
-        require(address(token) != address(this), "!sweep");
-        require(address(token) != address(rewardToken), "!sweep");
+    function sweep(IERC20 otherToken) external {
+        require(address(otherToken) != address(this), "!sweep");
+        require(address(otherToken) != address(rewardToken), "!sweep");
 
-        uint256 amount = token.balanceOf(address(this));
+        uint256 amount = otherToken.balanceOf(address(this));
 
-        token.safeTransfer(msg.sender, amount);
+        otherToken.safeTransfer(msg.sender, amount);
     }
 
     // =========================================================================

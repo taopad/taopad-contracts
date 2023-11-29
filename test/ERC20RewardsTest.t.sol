@@ -2,13 +2,20 @@
 pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol";
-import {ERC20Rewards} from "../src/ERC20Rewards.sol";
-import {ERC20RewardsCompounder} from "../src/ERC20RewardsCompounder.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {ERC20Rewards} from "../src/ERC20Rewards.sol";
+import {ERC20RewardsCompounder} from "../src/ERC20RewardsCompounder.sol";
+
+contract ERC20Mock is ERC20 {
+    constructor(uint256 _totalSupply) ERC20("R", "R") {
+        _mint(msg.sender, _totalSupply);
+    }
+}
 
 contract ERC20RewardsTest is Test {
     ERC20Rewards internal token;

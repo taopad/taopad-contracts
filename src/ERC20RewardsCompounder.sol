@@ -5,6 +5,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
@@ -19,6 +20,7 @@ import {IUniswapV3StaticQuoter} from "./IUniswapV3StaticQuoter.sol";
 /// @notice source: https://github.com/niera26/erc20-rewards-contracts
 contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     using Math for uint256;
+    using SafeERC20 for IERC20;
 
     // UniswapV3 Static Quoter (https://github.com/eden-network/uniswap-v3-static-quoter)
     IUniswapV3StaticQuoter public constant quoter = IUniswapV3StaticQuoter(0xc80f61d1bdAbD8f5285117e1558fDDf8C64870FE);
@@ -123,6 +125,18 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
         _compoundAboveThreshold();
 
         return super.redeem(assets, receiver, owner);
+    }
+
+    /**
+     * Sweep any other ERC20 mistakenly sent to this contract.
+     */
+    function sweep(IERC20 otherToken) external {
+        require(address(otherToken) != address(token), "!sweep");
+        require(address(otherToken) != address(rewardToken), "!sweep");
+
+        uint256 amount = otherToken.balanceOf(address(this));
+
+        otherToken.safeTransfer(msg.sender, amount);
     }
 
     /**

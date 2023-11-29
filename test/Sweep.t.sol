@@ -2,28 +2,23 @@
 pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol";
-import {ERC20RewardsTest} from "./ERC20RewardsTest.t.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
-
-contract ERC20Mock is ERC20 {
-    constructor(uint256 _totalSupply) ERC20("R", "R") {
-        _mint(msg.sender, _totalSupply);
-    }
-}
+import {ERC20RewardsTest, ERC20Mock} from "./ERC20RewardsTest.t.sol";
 
 contract SweepTest is ERC20RewardsTest {
-    function testSweep() public {
+    function testTokenSweep() public {
         IERC20 randomToken = new ERC20Mock(1000);
 
         address user = vm.addr(1);
 
         // put token and reward token in the contract.
         buyToken(user, 1 ether);
+        buyRewardToken(user, 1 ether);
 
-        token.distribute();
-
-        buyToken(user, 1 ether);
+        vm.startPrank(user);
+        token.transfer(address(token), token.balanceOf(address(user)));
+        rewardToken.transfer(address(token), rewardToken.balanceOf(address(user)));
+        vm.stopPrank();
 
         assertGt(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(address(token)), 0);
