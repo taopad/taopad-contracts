@@ -3,8 +3,9 @@ pragma solidity ^0.8.23;
 
 import {Script} from "forge-std/Script.sol";
 import {ERC20Rewards} from "../src/ERC20Rewards.sol";
+import {ERC20RewardsCompounder} from "../src/ERC20RewardsCompounder.sol";
 
-contract Initialize is Script {
+contract DeployCompounder is Script {
     address[] addrs;
     uint256[] allocs;
 
@@ -15,7 +16,7 @@ contract Initialize is Script {
         ERC20Rewards token = ERC20Rewards(payable(ERC20RewardsAddress));
 
         vm.startBroadcast(deployerPrivateKey);
-        token.initialize{value: 1000 ether}(1e6, addrs, allocs);
+        new ERC20RewardsCompounder("Reward token share", "sRTK", token);
         vm.stopBroadcast();
     }
 }

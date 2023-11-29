@@ -21,7 +21,7 @@ contract ERC20RewardsTest is Test {
         vm.deal(address(this), 1000 ether);
 
         token = new ERC20Rewards("Reward token", "RTK");
-        compounder = new ERC20RewardsCompounder("Wrapped reward token", "wRTK", token);
+        compounder = new ERC20RewardsCompounder("Reward token share", "sRTK", token);
 
         router = token.router();
         swapRouter = token.swapRouter();
