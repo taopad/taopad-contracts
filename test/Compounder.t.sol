@@ -6,152 +6,24 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20RewardsTest} from "./ERC20RewardsTest.t.sol";
 
 contract CompounderTest is ERC20RewardsTest {
-    function testCompounderRewards() public {
-        address user1 = vm.addr(1);
-        address user2 = vm.addr(2);
-        address user3 = vm.addr(3);
-
-        assertTrue(token.isOptin(address(compounder)));
-
-        uint256 rewardBalance = compounder.rewardBalance();
-
-        assertEq(rewardBalance, 0);
-
-        // buy some tokens, distribute and claim.
-        buyToken(user1, 1 ether);
-        buyToken(user2, 1 ether);
-
-        token.distribute();
-
-        vm.prank(user1);
-
-        token.claim();
-
-        vm.prank(user2);
-
-        token.claim();
-
-        assertGt(rewardToken.balanceOf(user1), 0);
-        assertGt(rewardToken.balanceOf(user2), 0);
-
-        // stack in the compounder.
-        uint256 balance1 = token.balanceOf(user1);
-        uint256 balance2 = token.balanceOf(user2);
-
-        vm.startPrank(user1);
-        token.approve(address(compounder), balance1);
-        compounder.deposit(balance1, user1);
-        vm.stopPrank();
-
-        vm.startPrank(user2);
-        token.approve(address(compounder), balance2);
-        compounder.deposit(balance2, user2);
-        vm.stopPrank();
-
-        assertGt(compounder.balanceOf(user1), 0);
-        assertGt(compounder.balanceOf(user2), 0);
-        assertEq(compounder.rewardBalance(), 0);
-        assertEq(compounder.totalAssets(), balance1 + balance2);
-
-        // distribute more rewards.
-        buyToken(user3, 1 ether);
-
-        token.distribute();
-
-        assertGt(compounder.rewardBalance(), 0);
-
-        // compound the rewards.
-        compounder.compound();
-
-        assertEq(compounder.rewardBalance(), 0);
-        assertEq(rewardToken.balanceOf(address(compounder)), 0);
-        assertEq(IERC20(router.WETH()).balanceOf(address(compounder)), 0);
-        assertGt(compounder.totalAssets(), balance1 + balance2);
-
-        // user can now redeem more tokens.
-        uint256 shareBalance1 = compounder.balanceOf(user1);
-        uint256 shareBalance2 = compounder.balanceOf(user2);
-
-        vm.startPrank(user1);
-        compounder.approve(address(compounder), shareBalance1);
-        compounder.redeem(shareBalance1, user1, user1);
-        vm.stopPrank();
-
-        vm.startPrank(user2);
-        compounder.approve(address(compounder), shareBalance2);
-        compounder.redeem(shareBalance2, user2, user2);
-        vm.stopPrank();
-
-        assertGt(token.balanceOf(user1), balance1);
-        assertGt(token.balanceOf(user2), balance2);
-        assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
+    struct AutocompoundUser {
+        address addr;
+        uint256 balance;
+        uint256 shareBalance;
     }
 
-    function testCompounderDonations() public {
-        address user1 = vm.addr(1);
-        address user2 = vm.addr(2);
-        address user3 = vm.addr(3);
-
-        // buy some tokens.
-        buyToken(user1, 1 ether);
-        buyToken(user2, 1 ether);
-        buyToken(user3, 1 ether);
-
-        // stack in the compounder.
-        uint256 balance1 = token.balanceOf(user1);
-        uint256 balance2 = token.balanceOf(user2);
-
-        vm.startPrank(user1);
-        token.approve(address(compounder), balance1);
-        compounder.deposit(balance1, user1);
+    function depositToken(address addr, uint256 amount) private {
+        vm.startPrank(addr);
+        token.approve(address(compounder), amount);
+        compounder.deposit(amount, addr);
         vm.stopPrank();
+    }
 
-        vm.startPrank(user2);
-        token.approve(address(compounder), balance2);
-        compounder.deposit(balance2, user2);
+    function redeemShare(address addr, uint256 amount) private {
+        vm.startPrank(addr);
+        compounder.approve(address(compounder), amount);
+        compounder.redeem(amount, addr, addr);
         vm.stopPrank();
-
-        // distribute the reward.
-        token.distribute();
-
-        vm.prank(user3);
-
-        token.claim();
-
-        uint256 donatorRewardBalance = rewardToken.balanceOf(user3);
-        uint256 compounderRewardBalance = compounder.rewardBalance();
-
-        assertGt(donatorRewardBalance, 0);
-        assertGt(compounderRewardBalance, 0);
-
-        // make a donation, compound and check.
-        vm.prank(user3);
-
-        rewardToken.transfer(address(compounder), donatorRewardBalance);
-
-        assertEq(compounder.rewardBalance(), compounderRewardBalance + donatorRewardBalance);
-
-        compounder.compound();
-
-        assertEq(compounder.rewardBalance(), 0);
-
-        // check everyone can redeem
-        uint256 shareBalance1 = compounder.balanceOf(user1);
-        uint256 shareBalance2 = compounder.balanceOf(user2);
-
-        vm.startPrank(user1);
-        compounder.approve(address(compounder), shareBalance1);
-        compounder.redeem(shareBalance1, user1, user1);
-        vm.stopPrank();
-
-        vm.startPrank(user2);
-        compounder.approve(address(compounder), shareBalance2);
-        compounder.redeem(shareBalance2, user2, user2);
-        vm.stopPrank();
-
-        assertGt(token.balanceOf(user1), balance1);
-        assertGt(token.balanceOf(user2), balance2);
-        assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
     }
 
     function testSetAutocompoundThreshold() public {
@@ -171,197 +43,295 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(compounder.autocompoundThreshold(), 1);
     }
 
+    function testCompounderCompound() public {
+        address user1 = vm.addr(1);
+        address user2 = vm.addr(2);
+
+        assertTrue(token.isOptin(address(compounder)));
+
+        uint256 rewardBalance = compounder.rewardBalance();
+
+        assertEq(rewardBalance, 0);
+
+        // buy some tokens and deposit in the compounder.
+        buyToken(user1, 1 ether);
+        buyToken(user2, 1 ether);
+
+        uint256 balance1 = token.balanceOf(user1);
+        uint256 balance2 = token.balanceOf(user2);
+
+        depositToken(user1, balance1);
+        depositToken(user2, balance2);
+
+        assertGt(compounder.balanceOf(user1), 0);
+        assertGt(compounder.balanceOf(user2), 0);
+        assertEq(compounder.rewardBalance(), 0);
+        assertEq(compounder.totalAssets(), balance1 + balance2);
+
+        // distribute and compound the rewards (from first buy).
+        token.distribute();
+
+        assertGt(compounder.rewardBalance(), 0);
+
+        compounder.compound();
+
+        assertEq(compounder.rewardBalance(), 0);
+        assertEq(rewardToken.balanceOf(address(compounder)), 0);
+        assertEq(IERC20(router.WETH()).balanceOf(address(compounder)), 0);
+        assertGt(compounder.totalAssets(), balance1 + balance2);
+
+        // user can now redeem more tokens.
+        redeemShare(user1, compounder.balanceOf(user1));
+        redeemShare(user2, compounder.balanceOf(user2));
+
+        assertGt(token.balanceOf(user1), balance1);
+        assertGt(token.balanceOf(user2), balance2);
+        assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
+    }
+
+    function testCompounderDonations() public {
+        address user1 = vm.addr(1);
+        address user2 = vm.addr(2);
+        address user3 = vm.addr(3);
+
+        // buy some token and deposit in the compounder.
+        buyToken(user1, 1 ether);
+        buyToken(user2, 1 ether);
+
+        uint256 balance1 = token.balanceOf(user1);
+        uint256 balance2 = token.balanceOf(user2);
+
+        depositToken(user1, balance1);
+        depositToken(user2, balance2);
+
+        // distribute the rewards and get the compounder reward amount.
+        token.distribute();
+
+        uint256 compounderRewardAmount = compounder.rewardBalance();
+
+        assertGt(compounderRewardAmount, 0);
+
+        // make a donation to the contract.
+        buyRewardToken(user3, 1 ether);
+
+        uint256 donationAmount = rewardToken.balanceOf(user3);
+
+        vm.prank(user3);
+
+        rewardToken.transfer(address(compounder), donationAmount);
+
+        assertGt(donationAmount, 0);
+        assertEq(compounder.rewardBalance(), compounderRewardAmount + donationAmount);
+
+        // compound and redeem.
+        compounder.compound();
+
+        redeemShare(user1, compounder.balanceOf(user1));
+        redeemShare(user2, compounder.balanceOf(user2));
+
+        assertGt(token.balanceOf(user1), balance1);
+        assertGt(token.balanceOf(user2), balance2);
+        assertEq(compounder.balanceOf(user1), 0);
+        assertEq(compounder.balanceOf(user2), 0);
+        assertEq(compounder.rewardBalance(), 0);
+        assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
+    }
+
     function testAutocompoundDepositExact() public {
-        autocompoundDeposit(0);
+        testAutocompoundDeposit(0);
     }
 
     function testAutocompoundDepositGreater() public {
-        autocompoundDeposit(-1);
+        testAutocompoundDeposit(-1); // threshold will be less than donation.
     }
 
     function testFailAutocompoundDepositLesser() public {
-        autocompoundDeposit(1);
+        testAutocompoundDeposit(1); // threshold will be more than donation.
+    }
+
+    function testAutocompoundDeposit(int256 delta) private {
+        AutocompoundUser memory user1 = AutocompoundUser(vm.addr(1), 0, 0);
+        AutocompoundUser memory user2 = AutocompoundUser(vm.addr(2), 0, 0);
+        AutocompoundUser memory user3 = AutocompoundUser(vm.addr(3), 0, 0);
+
+        // buy some tokens and deposit in the compounder.
+        buyToken(user1.addr, 1 ether);
+        buyToken(user2.addr, 1 ether);
+
+        user1.balance = token.balanceOf(user1.addr);
+        user2.balance = token.balanceOf(user2.addr);
+
+        uint256 previewDeposit1 = compounder.previewDeposit(user1.balance);
+
+        depositToken(user1.addr, user1.balance);
+
+        uint256 previewDeposit2 = compounder.previewDeposit(user2.balance);
+
+        depositToken(user2.addr, user2.balance);
+
+        user1.shareBalance = compounder.balanceOf(user1.addr);
+        user2.shareBalance = compounder.balanceOf(user2.addr);
+
+        assertGt(user1.shareBalance, 0);
+        assertGt(user2.shareBalance, 0);
+        assertEq(user1.shareBalance, previewDeposit1);
+        assertEq(user2.shareBalance, previewDeposit2);
+
+        // distribute and compound.
+        token.distribute();
+
+        compounder.compound();
+
+        assertEq(compounder.rewardBalance(), 0);
+
+        // get user3 buys token and preview deposit now.
+        buyToken(user3.addr, 1 ether);
+
+        user3.balance = token.balanceOf(user3.addr);
+
+        uint256 originalPreviewDeposit3 = compounder.previewDeposit(user3.balance);
+
+        assertGt(originalPreviewDeposit3, 0);
+
+        // make a donation equal or above autocompound threshold.
+        buyRewardToken(user1.addr, 1 ether);
+
+        uint256 donationAmount = rewardToken.balanceOf(user1.addr);
+
+        vm.prank(user1.addr);
+
+        rewardToken.transfer(address(compounder), donationAmount);
+
+        compounder.setAutocompoundTheshold(uint256(int256(donationAmount) + delta));
+
+        assertGt(donationAmount, 0);
+        assertEq(compounder.rewardBalance(), donationAmount);
+
+        // user3 deposit, should trigger autocompound.
+        // should mint less shares than without autocompound.
+        // because the underlying total assets will grow before before minting the shares.
+        uint256 previewDeposit3 = compounder.previewDeposit(user3.balance);
+
+        depositToken(user3.addr, user3.balance);
+
+        user3.shareBalance = compounder.balanceOf(user3.addr);
+
+        assertGt(previewDeposit3, 0);
+        assertEq(previewDeposit3, user3.shareBalance);
+        assertLt(previewDeposit3, originalPreviewDeposit3);
+
+        // check everyone can redeem and everything fine.
+        redeemShare(user1.addr, user1.shareBalance);
+        redeemShare(user2.addr, user2.shareBalance);
+        redeemShare(user3.addr, user3.shareBalance);
+
+        assertGt(token.balanceOf(user1.addr), user1.balance);
+        assertGt(token.balanceOf(user2.addr), user2.balance);
+        assertApproxEqAbs(token.balanceOf(user3.addr), user3.balance, 1); // it didn't compounded more + account for dust
+
+        assertEq(compounder.totalSupply(), 0);
+        assertEq(compounder.rewardBalance(), 0);
+        assertEq(compounder.balanceOf(user1.addr), 0);
+        assertEq(compounder.balanceOf(user2.addr), 0);
+        assertEq(compounder.balanceOf(user3.addr), 0);
+        assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
     }
 
     function testAutocompoundRedeemExact() public {
-        autocompoundRedeem(0);
+        testAutocompoundRedeem(0);
     }
 
     function testAutocompoundRedeemGreater() public {
-        autocompoundRedeem(-1);
+        testAutocompoundRedeem(-1);
     }
 
     function testFailAutocompoundRedeemLesser() public {
-        autocompoundRedeem(1);
+        testAutocompoundRedeem(1);
     }
 
-    function autocompoundDeposit(int256 delta) private {
-        address user1 = vm.addr(1);
-        address user2 = vm.addr(2);
-        address user3 = vm.addr(3);
+    function testAutocompoundRedeem(int256 delta) private {
+        AutocompoundUser memory user1 = AutocompoundUser(vm.addr(1), 0, 0);
+        AutocompoundUser memory user2 = AutocompoundUser(vm.addr(2), 0, 0);
+        AutocompoundUser memory user3 = AutocompoundUser(vm.addr(3), 0, 0);
 
-        // buy some tokens.
-        buyToken(user1, 1 ether);
-        buyToken(user2, 1 ether);
-        buyToken(user3, 1 ether);
+        // buy some tokens and deposit in the compounder.
+        buyToken(user1.addr, 1 ether);
+        buyToken(user2.addr, 1 ether);
+        buyToken(user3.addr, 1 ether);
 
-        // stack in the compounder.
-        uint256 balance1 = token.balanceOf(user1);
-        uint256 balance2 = token.balanceOf(user2);
-        uint256 balance3 = token.balanceOf(user3);
+        user1.balance = token.balanceOf(user1.addr);
+        user2.balance = token.balanceOf(user2.addr);
+        user3.balance = token.balanceOf(user3.addr);
 
-        vm.startPrank(user1);
-        token.approve(address(compounder), balance1);
-        compounder.deposit(balance1, user1);
-        vm.stopPrank();
+        depositToken(user1.addr, user1.balance);
+        depositToken(user2.addr, user2.balance);
+        depositToken(user3.addr, user3.balance);
 
-        vm.startPrank(user2);
-        token.approve(address(compounder), balance2);
-        compounder.deposit(balance2, user2);
-        vm.stopPrank();
+        user1.shareBalance = compounder.balanceOf(user1.addr);
+        user2.shareBalance = compounder.balanceOf(user2.addr);
+        user3.shareBalance = compounder.balanceOf(user3.addr);
 
-        // distribute, compound and claim.
+        assertGt(user1.shareBalance, 0);
+        assertGt(user2.shareBalance, 0);
+        assertGt(user3.shareBalance, 0);
+
+        // distribute and compound.
         token.distribute();
 
         compounder.compound();
 
-        vm.prank(user3);
-
-        token.claim();
-
-        // preview how much user1 and 2 can redeem.
-        uint256 shareBalance1 = compounder.balanceOf(user1);
-        uint256 shareBalance2 = compounder.balanceOf(user2);
-
-        uint256 previewRedeem1 = compounder.previewRedeem(shareBalance1);
-        uint256 previewRedeem2 = compounder.previewRedeem(shareBalance2);
-
-        assertGt(previewRedeem1, balance1);
-        assertGt(previewRedeem2, balance2);
-
-        // set threshold to exact user3 balance and donate.
-        uint256 donationAmount = rewardToken.balanceOf(user3);
-
-        // delta allow to test exact or lesser.
-        compounder.setAutocompoundTheshold(uint256(int256(donationAmount) + delta));
-
         assertEq(compounder.rewardBalance(), 0);
 
-        vm.prank(user3);
+        // user1 redeems, no autocompound.
+        uint256 previewRedeem1 = compounder.previewRedeem(user1.shareBalance);
+
+        redeemShare(user1.addr, user1.shareBalance);
+
+        assertGt(previewRedeem1, user1.balance);
+        assertEq(previewRedeem1, token.balanceOf(user1.addr));
+
+        // get user2 expected assets now.
+        uint256 originalPreviewRedeem2 = compounder.previewRedeem(user2.balance);
+
+        assertGt(originalPreviewRedeem2, 0);
+
+        // make a donation equal or above autocompound threshold.
+        buyRewardToken(user1.addr, 1 ether);
+
+        uint256 donationAmount = rewardToken.balanceOf(user1.addr);
+
+        vm.prank(user1.addr);
 
         rewardToken.transfer(address(compounder), donationAmount);
 
-        assertEq(compounder.rewardBalance(), donationAmount);
-
-        // deposit with user3, it should autocompound.
-        vm.startPrank(user3);
-        token.approve(address(compounder), balance3);
-        compounder.deposit(balance3, user3);
-        vm.stopPrank();
-
-        assertGt(compounder.previewRedeem(shareBalance1), previewRedeem1);
-        assertGt(compounder.previewRedeem(shareBalance2), previewRedeem2);
-
-        // everyone should be able to redeem and shares should be 0.
-        uint256 shareBalance3 = compounder.balanceOf(user3);
-
-        vm.startPrank(user1);
-        compounder.approve(address(compounder), shareBalance1);
-        compounder.redeem(shareBalance1, user1, user1);
-        vm.stopPrank();
-
-        vm.startPrank(user2);
-        compounder.approve(address(compounder), shareBalance2);
-        compounder.redeem(shareBalance2, user2, user2);
-        vm.stopPrank();
-
-        vm.startPrank(user3);
-        compounder.approve(address(compounder), shareBalance3);
-        compounder.redeem(shareBalance3, user3, user3);
-        vm.stopPrank();
-
-        assertEq(compounder.totalSupply(), 0);
-        assertGt(token.balanceOf(user1), balance1);
-        assertGt(token.balanceOf(user2), balance2);
-        assertGt(token.balanceOf(user1), previewRedeem1);
-        assertGt(token.balanceOf(user2), previewRedeem2);
-        assertApproxEqAbs(token.balanceOf(user3), balance3, 1); // account for dust
-    }
-
-    function autocompoundRedeem(int256 delta) private {
-        address user1 = vm.addr(1);
-        address user2 = vm.addr(2);
-        address user3 = vm.addr(3);
-
-        // buy some tokens.
-        buyToken(user1, 1 ether);
-        buyToken(user2, 1 ether);
-        buyToken(user3, 1 ether);
-
-        // stack in the compounder.
-        uint256 balance1 = token.balanceOf(user1);
-        uint256 balance2 = token.balanceOf(user2);
-
-        vm.startPrank(user1);
-        token.approve(address(compounder), balance1);
-        compounder.deposit(balance1, user1);
-        vm.stopPrank();
-
-        vm.startPrank(user2);
-        token.approve(address(compounder), balance2);
-        compounder.deposit(balance2, user2);
-        vm.stopPrank();
-
-        // distribute, compound and claim.
-        token.distribute();
-
-        compounder.compound();
-
-        vm.prank(user3);
-
-        token.claim();
-
-        // preview how much user1 and 2 can redeem.
-        uint256 shareBalance1 = compounder.balanceOf(user1);
-        uint256 shareBalance2 = compounder.balanceOf(user2);
-
-        uint256 previewRedeem1 = compounder.previewRedeem(shareBalance1);
-        uint256 previewRedeem2 = compounder.previewRedeem(shareBalance2);
-
-        assertGt(previewRedeem1, balance1);
-        assertGt(previewRedeem2, balance2);
-
-        // set threshold to exact user3 balance and donate.
-        uint256 donationAmount = rewardToken.balanceOf(user3);
-
-        // delta allow to test exact or lesser.
         compounder.setAutocompoundTheshold(uint256(int256(donationAmount) + delta));
 
-        assertEq(compounder.rewardBalance(), 0);
-
-        vm.prank(user3);
-
-        rewardToken.transfer(address(compounder), donationAmount);
-
+        assertGt(donationAmount, 0);
         assertEq(compounder.rewardBalance(), donationAmount);
 
-        // redeem with user1, it should autocompound.
-        vm.startPrank(user1);
-        compounder.approve(address(compounder), shareBalance1);
-        compounder.redeem(shareBalance1, user1, user1);
-        vm.stopPrank();
+        // user2 redeems, should trigger autocompound.
+        // should redeem more assets than without autocompound.
+        // because the underlying total assets will grow before before redeeming the shares.
+        uint256 previewRedeem2 = compounder.previewRedeem(user2.shareBalance);
 
-        assertGt(compounder.previewRedeem(shareBalance2), previewRedeem2);
+        redeemShare(user2.addr, user2.shareBalance);
 
-        vm.startPrank(user2);
-        compounder.approve(address(compounder), shareBalance2);
-        compounder.redeem(shareBalance2, user2, user2);
-        vm.stopPrank();
+        assertGt(previewRedeem2, 0);
+        assertEq(previewRedeem2, token.balanceOf(user2.addr));
+        assertGt(previewRedeem2, originalPreviewRedeem2);
+
+        // check user3 can redeem and everything fine.
+        redeemShare(user3.addr, user3.shareBalance);
+
+        assertGt(token.balanceOf(user1.addr), user1.balance);
+        assertGt(token.balanceOf(user2.addr), user2.balance);
+        assertGt(token.balanceOf(user3.addr), user3.balance);
 
         assertEq(compounder.totalSupply(), 0);
-        assertGt(token.balanceOf(user1), balance1);
-        assertGt(token.balanceOf(user2), balance2);
-        assertGt(token.balanceOf(user1), previewRedeem1);
-        assertGt(token.balanceOf(user2), previewRedeem2);
+        assertEq(compounder.rewardBalance(), 0);
+        assertEq(compounder.balanceOf(user1.addr), 0);
+        assertEq(compounder.balanceOf(user2.addr), 0);
+        assertEq(compounder.balanceOf(user3.addr), 0);
+        assertApproxEqAbs(compounder.totalAssets(), 0, 1); // account for dust
     }
 }

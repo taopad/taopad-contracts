@@ -8,10 +8,12 @@ import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.
 import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract ERC20RewardsTest is Test {
     ERC20Rewards internal token;
     IUniswapV2Router02 internal router;
+    ISwapRouter internal swapRouter;
     IERC20Metadata internal rewardToken;
     ERC20RewardsCompounder internal compounder;
 
@@ -22,6 +24,7 @@ contract ERC20RewardsTest is Test {
         compounder = new ERC20RewardsCompounder("Wrapped reward token", "wRTK", token);
 
         router = token.router();
+        swapRouter = token.swapRouter();
         rewardToken = token.rewardToken();
 
         token.initialize{value: 1000 ether}(1e6);
@@ -83,6 +86,25 @@ contract ERC20RewardsTest is Test {
         vm.prank(addr);
 
         router.swapExactTokensForETHSupportingFeeOnTransferTokens(exactTokenAmount, 0, path, addr, block.timestamp);
+    }
+
+    function buyRewardToken(address addr, uint256 amountIn) internal {
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: router.WETH(),
+            tokenOut: address(rewardToken),
+            fee: token.poolFee(),
+            recipient: addr,
+            deadline: block.timestamp,
+            amountIn: amountIn,
+            amountOutMinimum: 0,
+            sqrtPriceLimitX96: 0
+        });
+
+        vm.deal(addr, amountIn);
+
+        vm.prank(addr);
+
+        swapRouter.exactInputSingle{value: amountIn}(params);
     }
 
     // normalize given amount with token decimals.

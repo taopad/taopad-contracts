@@ -9,9 +9,9 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import {IQuoter} from "@uniswap/v3-periphery/contracts/interfaces/IQuoter.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 import {ERC20Rewards} from "./ERC20Rewards.sol";
+import {IUniswapV3StaticQuoter} from "./IUniswapV3StaticQuoter.sol";
 
 /// @title ERC20 rewards compounder
 /// @author @niera26
@@ -20,8 +20,8 @@ import {ERC20Rewards} from "./ERC20Rewards.sol";
 contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     using Math for uint256;
 
-    // UniswapV3 Quoter
-    IQuoter public constant quoter = IQuoter(0x61fFE014bA17989E743c5F6cB21bF9697530B21e);
+    // UniswapV3 Static Quoter (https://github.com/eden-network/uniswap-v3-static-quoter)
+    IUniswapV3StaticQuoter public constant quoter = IUniswapV3StaticQuoter(0xc80f61d1bdAbD8f5285117e1558fDDf8C64870FE);
 
     // cache the ERC20Rewards values.
     ERC20Rewards private immutable token;
@@ -30,8 +30,7 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     IERC20 public immutable rewardToken;
 
     // Auto compound is triggered on deposit and redeem when pending rewards are
-    // above this value.
-    // Max value so it does not trigger until owner sets it.
+    // above this value. (Max value so it never triggers until owner sets it)
     uint256 public autocompoundThreshold = type(uint256).max;
 
     // events.
@@ -61,7 +60,7 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     }
 
     /**
-     * Return pending rewards of this contract (take account of the donations to this contract).
+     * Return pending rewards of this contract (take donations into account).
      */
     function rewardBalance() public view returns (uint256) {
         return token.pendingRewards(address(this)) + rewardToken.balanceOf(address(this));
@@ -75,14 +74,14 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
         uint256 _rewardBalance = rewardBalance();
 
         if (_rewardBalance >= autocompoundThreshold) {
-            _expected = _quoteRewardTokenAsAsset(_rewardBalance);
+            _expected = _quoteRewardAsAsset(_rewardBalance);
         }
 
         return totalAssets() + _expected;
     }
 
     /**
-     * Compound the rewards to more ERC20Rewards.
+     * Compound the rewards to more assets.
      */
     function compound() external nonReentrant {
         if (rewardBalance() == 0) return;
@@ -92,20 +91,24 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
 
     /**
      * Override previewDeposit to take autocompounding into account.
+     *
+     * Same as original but with compoundedTotalAssets()
      */
     function previewDeposit(uint256 assets) public view override returns (uint256) {
-        return _convertToSharesCompound(assets, Math.Rounding.Floor);
+        return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), compoundedTotalAssets() + 1, Math.Rounding.Floor);
     }
 
     /**
      * Override previewRedeem to take autocompounding into account.
+     *
+     * Same as original but with compoundedTotalAssets()
      */
     function previewRedeem(uint256 shares) public view override returns (uint256) {
-        return _convertToAssetsCompound(shares, Math.Rounding.Floor);
+        return shares.mulDiv(compoundedTotalAssets() + 1, totalSupply() + 10 ** _decimalsOffset(), Math.Rounding.Floor);
     }
 
     /**
-     * Override deposit so it auto compounds when pending rewards are above threshold.
+     * Override deposit so it autocompounds when reward balance is above threshold.
      */
     function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256) {
         _compoundAboveThreshold();
@@ -114,26 +117,12 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     }
 
     /**
-     * Override redeem so it auto compounds when pending rewards are above threshold.
+     * Override redeem so it autocompounds when reward balance is above threshold.
      */
     function redeem(uint256 assets, address receiver, address owner) public override nonReentrant returns (uint256) {
         _compoundAboveThreshold();
 
         return super.redeem(assets, receiver, owner);
-    }
-
-    /**
-     * Convert assets to shares accounting for autocompounding.
-     */
-    function _convertToSharesCompound(uint256 assets, Math.Rounding rounding) private view returns (uint256) {
-        return assets.mulDiv(totalSupply() + 10 ** _decimalsOffset(), compoundedTotalAssets() + 1, rounding);
-    }
-
-    /**
-     * Convert shares to assets accounting for autocompounding.
-     */
-    function _convertToAssetsCompound(uint256 shares, Math.Rounding rounding) private view returns (uint256) {
-        return shares.mulDiv(compoundedTotalAssets() + 1, totalSupply() + 10 ** _decimalsOffset(), rounding);
     }
 
     /**
@@ -171,33 +160,51 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     /**
      * Computes how many tokens will be swapped for the given amount of reward tokens.
      */
-    function _quoteRewardTokenAsAsset(uint256 amountIn) private view returns (uint256) {
+    function _quoteRewardAsAsset(uint256 amountIn) private view returns (uint256) {
         return _ETHAsAssetV2(_rewardAsETHV3(amountIn));
     }
 
     /**
      * Computes how many tokens will be swapped for the given amount of ETH.
+     *
+     * The current buy tax should be taken into account.
      */
     function _ETHAsAssetV2(uint256 amountIn) private view returns (uint256) {
         if (amountIn == 0) return 0;
 
-        // path from WETH to asset.
         address[] memory path = new address[](2);
         path[0] = router.WETH();
         path[1] = address(token);
 
         uint256[] memory amountsOut = router.getAmountsOut(amountIn, path);
 
-        return amountsOut[0];
+        uint256 buyRewardFee = token.buyRewardFee();
+        uint256 buyMarketingFee = token.buyMarketingFee();
+        uint256 feeDenominator = token.feeDenominator();
+
+        uint256 buyRewardFeeAmount = (amountsOut[1] * buyRewardFee) / feeDenominator;
+        uint256 buyMarketingFeeAmount = (amountsOut[1] * buyMarketingFee) / feeDenominator;
+        uint256 buyTotalFeeAmount = buyRewardFeeAmount + buyMarketingFeeAmount;
+
+        return amountsOut[1] - buyTotalFeeAmount;
     }
 
     /**
      * Computes how many ETH will be swapped for the given amount of reward tokens.
      */
-    function _rewardAsETHV3(uint256 amountIn) private pure returns (uint256) {
+    function _rewardAsETHV3(uint256 amountIn) private view returns (uint256) {
         if (amountIn == 0) return 0;
 
-        return 0;
+        IUniswapV3StaticQuoter.QuoteExactInputSingleParams memory params = IUniswapV3StaticQuoter
+            .QuoteExactInputSingleParams({
+            tokenIn: address(rewardToken),
+            tokenOut: router.WETH(),
+            amountIn: amountIn,
+            fee: token.poolFee(),
+            sqrtPriceLimitX96: 0
+        });
+
+        return quoter.quoteExactInputSingle(params);
     }
 
     /**
