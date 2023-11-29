@@ -72,13 +72,13 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     // buy taxes bps.
     uint256 public buyRewardFee = 500;
-    uint256 public buyMarketingFee = 2000;
+    uint256 public buyMarketingFee = 1900;
     uint256 public buyTotalFee = buyRewardFee + buyMarketingFee;
     uint256 public maxBuyFee = 3000;
 
     // sell taxes bps.
     uint256 public sellRewardFee = 500;
-    uint256 public sellMarketingFee = 2000;
+    uint256 public sellMarketingFee = 1900;
     uint256 public sellTotalFee = sellRewardFee + sellMarketingFee;
     uint256 public maxSellFee = 3000;
 

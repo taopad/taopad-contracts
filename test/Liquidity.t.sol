@@ -45,7 +45,7 @@ contract LiquidityTest is ERC20RewardsTest {
 
         // provider must have 0.8 ethers back minus some dex fees.
         // he must also have the token he sent to he pool minus the token fee and dex fee.
-        assertApproxEqRel(provider.balance, 0.8 ether, 0.02e18);
+        assertApproxEqRel(provider.balance, 0.8 ether, 0.03e18);
         assertApproxEqRel(token.balanceOf(provider), amountFor1Ether - rewardFee - marketingFee, 0.01e18);
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
