@@ -265,4 +265,23 @@ contract MiscTest is ERC20RewardsTest {
         assertEq(randomToken.balanceOf(address(user)), 1000);
         assertEq(randomToken.balanceOf(address(token)), 0);
     }
+
+    function testLastUpdateBlock() public {
+        address user = vm.addr(1);
+
+        uint256 newBlock1 = block.number + 1000;
+        uint256 newBlock2 = block.number + 2000;
+
+        vm.roll(newBlock1);
+
+        buyToken(user, 1 ether);
+
+        assertEq(token.lastUpdateBlock(user), newBlock1);
+
+        vm.roll(newBlock2);
+
+        buyToken(user, 1 ether);
+
+        assertEq(token.lastUpdateBlock(user), newBlock2);
+    }
 }

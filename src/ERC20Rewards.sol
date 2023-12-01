@@ -237,6 +237,13 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
+     * Return the given address last update block (mostly for frontend).
+     */
+    function lastUpdateBlock(address addr) external view returns (uint256) {
+        return shareholders[addr].lastUpdateBlock;
+    }
+
+    /**
      * Claim reward tokens.
      */
     function claim() external nonReentrant {
