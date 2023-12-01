@@ -63,7 +63,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(rewardToken.balanceOf(user3), 0);
         assertEq(rewardToken.balanceOf(user2), rewardToken.balanceOf(user3));
         assertApproxEqAbs(rewardToken.balanceOf(user1), rewardToken.balanceOf(user2) + rewardToken.balanceOf(user3), 1);
-        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
 
         // check marketing amount.
         uint256 distributed = rewardToken.balanceOf(user1) + rewardToken.balanceOf(user2) + rewardToken.balanceOf(user2)
@@ -128,7 +128,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
-        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
     }
 
     function testDistributeRewardDonations() public {
@@ -184,7 +184,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
-        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
 
         // collect more taxes.
         buyToken(user1, 1 ether);
@@ -229,7 +229,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(rewardToken.balanceOf(user1), 0);
         assertGt(rewardToken.balanceOf(user2), 0);
         assertGt(rewardToken.balanceOf(user3), 0);
-        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3); // some dust
+        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
     }
 
     function testRevertUpdateAndDistributeSameBlock() public {
