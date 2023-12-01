@@ -85,11 +85,13 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
 
     /**
      * Compound the rewards to more assets.
+     *
+     * Pass minimal expected amount to prevent slippage/frontrun.
      */
-    function compound() external nonReentrant {
+    function compound(uint256 amountOutMin) external nonReentrant {
         if (rewardBalance() == 0) return;
 
-        _compound();
+        _compound(amountOutMin);
     }
 
     /**
@@ -148,13 +150,13 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
     function _compoundAboveThreshold() private {
         if (rewardBalance() < autocompoundThreshold) return;
 
-        _compound();
+        _compound(0);
     }
 
     /**
      * Compound pending rewards into more assets.
      */
-    function _compound() private {
+    function _compound(uint256 amountOutMin) private {
         token.claim();
 
         uint256 amountToCompound = rewardToken.balanceOf(address(this));
@@ -167,7 +169,7 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
 
         if (ETHBalance == 0) return;
 
-        uint256 swapped = _swapETHToAssetV2(address(this), ETHBalance, 0);
+        uint256 swapped = _swapETHToAssetV2(address(this), ETHBalance, amountOutMin);
 
         if (swapped == 0) return;
 

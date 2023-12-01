@@ -180,7 +180,7 @@ contract BlacklistTest is ERC20RewardsTest {
         assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2));
 
         // distribute the rewards.
-        token.distribute();
+        token.distribute(0);
 
         uint256 pendingRewards1 = token.pendingRewards(user1);
         uint256 pendingRewards2 = token.pendingRewards(user2);
@@ -203,7 +203,7 @@ contract BlacklistTest is ERC20RewardsTest {
         assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user3));
 
         // distribute the rewards.
-        token.distribute();
+        token.distribute(0);
 
         assertGt(token.pendingRewards(user1), pendingRewards1);
         assertEq(token.pendingRewards(user2), pendingRewards2);
@@ -223,7 +223,7 @@ contract BlacklistTest is ERC20RewardsTest {
         assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2) + token.balanceOf(user3));
 
         // distribute the rewards.
-        token.distribute();
+        token.distribute(0);
 
         assertGt(token.pendingRewards(user1), pendingRewards1);
         assertGt(token.pendingRewards(user2), pendingRewards2);

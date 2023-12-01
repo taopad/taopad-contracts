@@ -310,8 +310,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     /**
      * Distribute taxes as reward token.
+     *
+     * Pass minimal expected amount to prevent slippage/frontrun.
      */
-    function distribute() external nonReentrant {
+    function distribute(uint256 amountOutMinimum) external nonReentrant {
         require(block.number > shareholders[msg.sender].lastUpdateBlock, "update and distribute in the same block");
 
         if (totalShares == 0) return;
@@ -325,7 +327,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
             _swapTokenToETHV2(address(this), totalTaxAmount, 0);
 
             // swap all this contract ETH to rewards and send it to this contract.
-            uint256 swappedRewards = _swapETHToRewardV3(address(this), address(this).balance, 0);
+            uint256 swappedRewards = _swapETHToRewardV3(address(this), address(this).balance, amountOutMinimum);
 
             // collect marketing tax when something has been swapped.
             if (swappedRewards > 0) {

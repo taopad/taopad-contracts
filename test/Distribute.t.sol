@@ -35,7 +35,7 @@ contract DistributeTest is ERC20RewardsTest {
 
         // users with same shares should get same rewards.
         // user with twice more shares should get twice more rewards.
-        token.distribute();
+        token.distribute(0);
 
         assertGt(token.pendingRewards(user1), 0);
         assertGt(token.pendingRewards(user2), 0);
@@ -110,7 +110,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(token.balanceOf(address(token)), originalTaxAmount);
 
         // everything should be distributed.
-        token.distribute();
+        token.distribute(0);
 
         vm.prank(user1);
 
@@ -166,7 +166,7 @@ contract DistributeTest is ERC20RewardsTest {
         rewardToken.transfer(address(token), rewardTokenBalance3);
 
         // rewards should be distributed.
-        token.distribute();
+        token.distribute(0);
 
         vm.prank(user1);
 
@@ -211,7 +211,7 @@ contract DistributeTest is ERC20RewardsTest {
         rewardToken.transfer(address(token), rewardTokenBalance3);
 
         // taxes and sent rewards should be distributed.
-        token.distribute();
+        token.distribute(0);
 
         vm.prank(user1);
 
@@ -232,7 +232,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
     }
 
-    function testRevertUpdateAndDistributeSameBlock() public {
+    function testUpdateAndDistributeSameBlockReverts() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
 
@@ -243,7 +243,7 @@ contract DistributeTest is ERC20RewardsTest {
 
         vm.expectRevert("update and distribute in the same block");
 
-        token.distribute();
+        token.distribute(0);
 
         // revert after transfer.
         uint256 balance1 = token.balanceOf(user1);
@@ -256,23 +256,36 @@ contract DistributeTest is ERC20RewardsTest {
 
         vm.expectRevert("update and distribute in the same block");
 
-        token.distribute();
+        token.distribute(0);
 
         vm.prank(user2);
 
         vm.expectRevert("update and distribute in the same block");
 
-        token.distribute();
+        token.distribute(0);
 
         // do not revert on next block.
         vm.roll(block.number + 1);
 
         vm.prank(user1);
 
-        token.distribute();
+        token.distribute(0);
 
         vm.prank(user2);
 
-        token.distribute();
+        token.distribute(0);
+    }
+
+    function testDistributeLessThanAmountOutMinimumReverts() public {
+        address user = vm.addr(1);
+
+        buyToken(user, 1 ether);
+
+        // 10 wTao is > than tax now.
+        uint256 amountOutMinimum = 10 * 10 ** rewardToken.decimals();
+
+        vm.expectRevert("Too little received");
+
+        token.distribute(amountOutMinimum);
     }
 }

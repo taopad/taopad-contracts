@@ -53,7 +53,7 @@ contract SwapTest is ERC20RewardsTest {
         assertApproxEqRel(token.balanceOf(address(token)), rewardFee + marketingFee, 0.01e18);
 
         // test distribute is not reverting.
-        token.distribute();
+        token.distribute(0);
 
         uint256 pendingRewards = token.pendingRewards(user);
 

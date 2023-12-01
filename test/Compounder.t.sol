@@ -69,11 +69,11 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(compounder.totalAssets(), balance1 + balance2);
 
         // distribute and compound the rewards (from first buy).
-        token.distribute();
+        token.distribute(0);
 
         assertGt(compounder.rewardBalance(), 0);
 
-        compounder.compound();
+        compounder.compound(0);
 
         assertEq(compounder.rewardBalance(), 0);
         assertEq(rewardToken.balanceOf(address(compounder)), 0);
@@ -105,7 +105,7 @@ contract CompounderTest is ERC20RewardsTest {
         depositToken(user2, balance2);
 
         // distribute the rewards and get the compounder reward amount.
-        token.distribute();
+        token.distribute(0);
 
         uint256 compounderRewardAmount = compounder.rewardBalance();
 
@@ -124,7 +124,7 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(compounder.rewardBalance(), compounderRewardAmount + donationAmount);
 
         // compound and redeem.
-        compounder.compound();
+        compounder.compound(0);
 
         redeemShare(user1, compounder.balanceOf(user1));
         redeemShare(user2, compounder.balanceOf(user2));
@@ -178,9 +178,9 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(user2.shareBalance, previewDeposit2);
 
         // distribute and compound.
-        token.distribute();
+        token.distribute(0);
 
-        compounder.compound();
+        compounder.compound(0);
 
         assertEq(compounder.rewardBalance(), 0);
 
@@ -276,9 +276,9 @@ contract CompounderTest is ERC20RewardsTest {
         assertGt(user3.shareBalance, 0);
 
         // distribute and compound.
-        token.distribute();
+        token.distribute(0);
 
-        compounder.compound();
+        compounder.compound(0);
 
         assertEq(compounder.rewardBalance(), 0);
 
@@ -399,5 +399,24 @@ contract CompounderTest is ERC20RewardsTest {
 
         assertEq(randomToken.balanceOf(address(user)), 1000);
         assertEq(randomToken.balanceOf(address(compounder)), 0);
+    }
+
+    function testCompoundLessThanAmountOutMinReverts() public {
+        address user = vm.addr(1);
+
+        buyToken(user, 1 ether);
+
+        uint256 originalBalance = token.balanceOf(user);
+
+        depositToken(user, originalBalance);
+
+        token.distribute(0);
+
+        // 25% of original user balance should be more than expected.
+        uint256 amountOutMin = (originalBalance * 25) / 100;
+
+        vm.expectRevert("UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT");
+
+        compounder.compound(amountOutMin);
     }
 }
