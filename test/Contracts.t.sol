@@ -42,6 +42,7 @@ contract ContractsTest is ERC20RewardsTest {
 
         assertEq(token.totalShares(), token.balanceOf(user));
 
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         uint256 userPendingRewards = token.pendingRewards(user);
@@ -63,6 +64,7 @@ contract ContractsTest is ERC20RewardsTest {
         // distribute more, contract gets rewards.
         buyToken(user, 1 ether);
 
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         assertGt(token.pendingRewards(user), userPendingRewards);
@@ -84,6 +86,7 @@ contract ContractsTest is ERC20RewardsTest {
         // distribute more, contract gets no rewards anymore.
         buyToken(user, 1 ether);
 
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         assertGt(token.pendingRewards(user), userPendingRewards);

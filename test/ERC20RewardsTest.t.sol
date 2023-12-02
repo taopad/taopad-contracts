@@ -39,6 +39,10 @@ contract ERC20RewardsTest is Test {
         vm.roll(block.number + token.deadBlocks() + 1);
     }
 
+    function withDecimals(uint256 amount) internal view returns (uint256) {
+        return amount * 10 ** token.decimals();
+    }
+
     function addLiquidity(address addr, uint256 amountETHDesired, uint256 amountTokenDesired) internal {
         vm.deal(addr, amountETHDesired);
 

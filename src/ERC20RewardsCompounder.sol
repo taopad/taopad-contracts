@@ -197,15 +197,9 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
 
         uint256[] memory amountsOut = router.getAmountsOut(amountIn, path);
 
-        uint256 buyRewardFee = token.buyRewardFee();
-        uint256 buyMarketingFee = token.buyMarketingFee();
-        uint256 feeDenominator = token.feeDenominator();
+        uint256 taxAmount = (amountsOut[1] * token.buyFee()) / token.feeDenominator();
 
-        uint256 buyRewardFeeAmount = (amountsOut[1] * buyRewardFee) / feeDenominator;
-        uint256 buyMarketingFeeAmount = (amountsOut[1] * buyMarketingFee) / feeDenominator;
-        uint256 buyTotalFeeAmount = buyRewardFeeAmount + buyMarketingFeeAmount;
-
-        return amountsOut[1] - buyTotalFeeAmount;
+        return amountsOut[1] - taxAmount;
     }
 
     /**

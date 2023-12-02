@@ -12,7 +12,7 @@ contract DistributeTest is ERC20RewardsTest {
         address user4 = vm.addr(3);
 
         // set the buy fee to something easy to compute.
-        token.setBuyFee(800, 200);
+        token.setFee(1000, 1000, 2000);
 
         // add some tax.
         buyToken(user4, 1 ether);
@@ -35,6 +35,7 @@ contract DistributeTest is ERC20RewardsTest {
 
         // users with same shares should get same rewards.
         // user with twice more shares should get twice more rewards.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         assertGt(token.pendingRewards(user1), 0);
@@ -42,7 +43,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(token.pendingRewards(user3), 0);
         assertEq(token.pendingRewards(user2), token.pendingRewards(user3));
         assertApproxEqAbs(token.pendingRewards(user1), token.pendingRewards(user2) + token.pendingRewards(user3), 1);
-        assertGt(rewardToken.balanceOf(token.marketingWallet()), 0);
+        assertApproxEqRel(token.marketingWallet().balance, 0.02 ether, 0.01e18); // tax is 100 tokens ~= 0.1 eth, marketing is 1/5
 
         // claim everything.
         vm.prank(user1);
@@ -64,12 +65,6 @@ contract DistributeTest is ERC20RewardsTest {
         assertEq(rewardToken.balanceOf(user2), rewardToken.balanceOf(user3));
         assertApproxEqAbs(rewardToken.balanceOf(user1), rewardToken.balanceOf(user2) + rewardToken.balanceOf(user3), 1);
         assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
-
-        // check marketing amount.
-        uint256 distributed = rewardToken.balanceOf(user1) + rewardToken.balanceOf(user2) + rewardToken.balanceOf(user2)
-            + rewardToken.balanceOf(token.marketingWallet());
-
-        assertApproxEqRel(rewardToken.balanceOf(token.marketingWallet()), distributed / 5, 0.01e18);
     }
 
     function testDistributeTokenDonations() public {
@@ -110,6 +105,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(token.balanceOf(address(token)), originalTaxAmount);
 
         // everything should be distributed.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         vm.prank(user1);
@@ -166,6 +162,7 @@ contract DistributeTest is ERC20RewardsTest {
         rewardToken.transfer(address(token), rewardTokenBalance3);
 
         // rewards should be distributed.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         vm.prank(user1);
@@ -211,6 +208,7 @@ contract DistributeTest is ERC20RewardsTest {
         rewardToken.transfer(address(token), rewardTokenBalance3);
 
         // taxes and sent rewards should be distributed.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         vm.prank(user1);
@@ -232,50 +230,6 @@ contract DistributeTest is ERC20RewardsTest {
         assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 10); // some dust
     }
 
-    function testUpdateAndDistributeSameBlockReverts() public {
-        address user1 = vm.addr(1);
-        address user2 = vm.addr(2);
-
-        buyToken(user1, 1 ether);
-
-        // revert after buy.
-        vm.prank(user1);
-
-        vm.expectRevert("update and distribute in the same block");
-
-        token.distribute(0);
-
-        // revert after transfer.
-        uint256 balance1 = token.balanceOf(user1);
-
-        vm.prank(user1);
-
-        token.transfer(user2, balance1);
-
-        vm.prank(user1);
-
-        vm.expectRevert("update and distribute in the same block");
-
-        token.distribute(0);
-
-        vm.prank(user2);
-
-        vm.expectRevert("update and distribute in the same block");
-
-        token.distribute(0);
-
-        // do not revert on next block.
-        vm.roll(block.number + 1);
-
-        vm.prank(user1);
-
-        token.distribute(0);
-
-        vm.prank(user2);
-
-        token.distribute(0);
-    }
-
     function testDistributeLessThanAmountOutMinimumReverts() public {
         address user = vm.addr(1);
 
@@ -283,6 +237,8 @@ contract DistributeTest is ERC20RewardsTest {
 
         // 10 wTao is > than tax now.
         uint256 amountOutMinimum = 10 * 10 ** rewardToken.decimals();
+
+        token.swapCollectedTax(0);
 
         vm.expectRevert("Too little received");
 

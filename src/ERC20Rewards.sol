@@ -54,33 +54,13 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 amount; // recorded balance after last transfer.
         uint256 earned; // amount of tokens earned but not claimed yet.
         uint256 TokenPerShareLast; // token per share value of the last earn occurrence.
-        uint256 lastUpdateBlock; // last block the share was updated.
     }
 
     // total amount of reward tokens ever claimed by holders.
-    uint256 public totalTokenClaimed;
+    uint256 public totalRewardClaimed;
 
     // total amount of reward tokens ever distributed.
-    uint256 public totalTokenDistributed;
-
-    // =========================================================================
-    // fees.
-    // =========================================================================
-
-    // bps denominator.
-    uint256 public constant feeDenominator = 10000;
-
-    // buy taxes bps.
-    uint256 public buyRewardFee = 500;
-    uint256 public buyMarketingFee = 1900;
-    uint256 public buyTotalFee = buyRewardFee + buyMarketingFee;
-    uint256 public maxBuyFee = 3000;
-
-    // sell taxes bps.
-    uint256 public sellRewardFee = 500;
-    uint256 public sellMarketingFee = 1900;
-    uint256 public sellTotalFee = sellRewardFee + sellMarketingFee;
-    uint256 public maxSellFee = 3000;
+    uint256 public totalRewardDistributed;
 
     // amm pair addresses the tranfers from/to are taxed.
     // (populated with WETH/this token pair address in the constructor).
@@ -106,14 +86,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // address where marketing tax is sent.
     address public marketingWallet;
 
-    // amount of this token collected as marketing tax.
-    uint256 private marketingAmount;
-
     // =========================================================================
     // pool options.
     // =========================================================================
 
     uint24 public poolFee = 10000; // works for wTAO
+
+    // =========================================================================
+    // fees.
+    // =========================================================================
+
+    uint24 public constant feeDenominator = 10000;
+
+    uint24 public buyFee = 2400;
+    uint24 public sellFee = 2400;
+    uint24 public marketingFee = 8000;
 
     // =========================================================================
     // Events.
@@ -214,33 +201,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Return the amount of reward token ready to be distributed.
-     *
-     * == balance of reward token minus what's not claimed yet.
-     *
-     * Allows to expose reward token donations to this contract.
-     *
-     * When a distribution occurs, the tax is swapped to reward token
-     * and this value grows.
-     */
-    function rewardBalance() public view returns (uint256) {
-        uint256 amountToClaim = totalTokenDistributed - totalTokenClaimed;
-
-        return rewardToken.balanceOf(address(this)) - amountToClaim;
-    }
-
-    /**
      * Return the amount of reward tokens the given address can claim.
      */
     function pendingRewards(address addr) external view returns (uint256) {
         return _pendingRewards(shareholders[addr]);
-    }
-
-    /**
-     * Return the given address last update block (mostly for frontend).
-     */
-    function lastUpdateBlock(address addr) external view returns (uint256) {
-        return shareholders[addr].lastUpdateBlock;
     }
 
     /**
@@ -257,7 +221,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         share.earned = 0;
 
-        totalTokenClaimed += amountToClaim;
+        totalRewardClaimed += amountToClaim;
 
         rewardToken.safeTransfer(msg.sender, amountToClaim);
 
@@ -309,44 +273,63 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Distribute taxes as reward token.
+     * Swap the collected tax to ETH.
+     */
+    function swapCollectedTax(uint256 amountOutMin) public {
+        // return if no tax collected.
+        uint256 amountIn = balanceOf(address(this));
+
+        if (amountIn == 0) return;
+
+        // approve router to spend tokens.
+        _approve(address(this), address(router), amountIn);
+
+        // swap the whole amount to eth.
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = router.WETH();
+
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            amountIn, amountOutMin, path, address(this), block.timestamp
+        );
+    }
+
+    /**
+     * Distribute eth balance as reward token.
      *
      * Pass minimal expected amount to prevent slippage/frontrun.
      */
     function distribute(uint256 amountOutMinimum) external nonReentrant {
-        require(block.number > shareholders[msg.sender].lastUpdateBlock, "update and distribute in the same block");
-
         if (totalShares == 0) return;
 
-        // get the collected tax.
-        uint256 totalTaxAmount = balanceOf(address(this));
+        uint256 ethBalance = address(this).balance;
 
-        // swap all tax for rewards if any.
-        if (totalTaxAmount > 0) {
-            // swap all tax to ETH and send it to this contract.
-            _swapTokenToETHV2(address(this), totalTaxAmount, 0);
+        if (ethBalance == 0) return;
 
-            // swap all this contract ETH to rewards and send it to this contract.
-            uint256 swappedRewards = _swapETHToRewardV3(address(this), address(this).balance, amountOutMinimum);
+        // take marketing tax here.
+        uint256 marketingAmount = (ethBalance * marketingFee) / feeDenominator;
 
-            // collect marketing tax when something has been swapped.
-            if (swappedRewards > 0) {
-                // marketing amount is always <= total tax amount.
-                uint256 marketing = (swappedRewards * marketingAmount) / totalTaxAmount;
-
-                rewardToken.safeTransfer(marketingWallet, marketing);
-
-                marketingAmount = 0; // reset collected marketing.
-            }
+        if (marketingAmount > 0) {
+            payable(marketingWallet).transfer(marketingAmount);
         }
 
+        // swap eth to reward token.
+        uint256 ethToDistribute = ethBalance - marketingAmount;
+
+        if (ethToDistribute == 0) return;
+
+        _swapETHToRewardV3(address(this), ethToDistribute, amountOutMinimum);
+
         // distribute the available rewards (swapped tax + reward token donations).
-        uint256 amountToDistribute = rewardBalance();
+        // === this contract balance of reward token minus what's remaining to claim.
+        uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
+
+        uint256 amountToDistribute = rewardToken.balanceOf(address(this)) - amountToClaim;
 
         if (amountToDistribute == 0) return;
 
         TokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
-        totalTokenDistributed += amountToDistribute;
+        totalRewardDistributed += amountToDistribute;
 
         emit Distribute(msg.sender, amountToDistribute);
     }
@@ -373,20 +356,14 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         maxWallet = type(uint256).max;
     }
 
-    function setBuyFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
-        require(rewardFee + marketingFee <= maxBuyFee, "!maxBuyFee");
+    function setFee(uint24 _buyFee, uint24 _sellFee, uint24 _marketingFee) external onlyOwner {
+        require(_buyFee <= feeDenominator, "!buyFee");
+        require(_sellFee <= feeDenominator, "!sellFee");
+        require(_marketingFee <= feeDenominator, "!marketingFee");
 
-        buyRewardFee = rewardFee;
-        buyMarketingFee = marketingFee;
-        buyTotalFee = rewardFee + marketingFee;
-    }
-
-    function setSellFee(uint256 rewardFee, uint256 marketingFee) external onlyOwner {
-        require(rewardFee + marketingFee <= maxSellFee, "!maxSellFee");
-
-        sellRewardFee = rewardFee;
-        sellMarketingFee = marketingFee;
-        sellTotalFee = rewardFee + marketingFee;
+        buyFee = _buyFee;
+        sellFee = _sellFee;
+        marketingFee = _marketingFee;
     }
 
     function setPoolFee(uint24 _poolFee) external onlyOwner {
@@ -417,20 +394,19 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Return addresses excluded from max wallet limit (= this contract, routers or pairs).
+     * Return addresses excluded from max wallet limit (= this contract, router or pairs).
      *
      * Blacklisted addresses are excluded too so they can buy as much as they want.
      */
     function _isExcludedFromMaxWallet(address addr) private view returns (bool) {
-        return addr == address(this) || addr == address(router) || addr == address(swapRouter) || pairs[addr]
-            || isBlacklisted[addr];
+        return addr == address(this) || addr == address(router) || pairs[addr] || isBlacklisted[addr];
     }
 
     /**
-     * Return adresses excluded from taxes (= this contract or routers).
+     * Return adresses excluded from taxes (= this contract or router).
      */
     function _isExcludedFromTaxes(address addr) private view returns (bool) {
-        return address(this) == addr || address(router) == addr || address(swapRouter) == addr;
+        return address(this) == addr || address(router) == addr;
     }
 
     /**
@@ -535,12 +511,11 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * Override the update method in order to take fee when transfer is from/to
      * a registered amm pair.
      *
-     * - transfers from/to this contract are not taxed.
-     * - transfers from/to uniswap router are not taxed.
+     * - transfers from/to registered pairs are taxed.
      * - addresses buying in a deadblock are blacklisted and cant transfer tokens anymore.
      * - prevent receiving address to get more than max wallet.
-     * - marketing fees are accounted here.
      * - taxed tokens are sent to this very contract.
+     * - on a taxed sell, the collected tax is swapped for eth.
      * - updates the shares of both the from and to addresses.
      */
     function _update(address from, address to, uint256 amount) internal override {
@@ -551,17 +526,12 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         bool isTaxedBuy = pairs[from] && !_isExcludedFromTaxes(to);
         bool isTaxedSell = !_isExcludedFromTaxes(from) && pairs[to];
 
-        // compute the reward fees and the marketing fees.
-        uint256 rewardFee = (isTaxedBuy ? buyRewardFee : 0) + (isTaxedSell ? sellRewardFee : 0);
-        uint256 marketingFee = (isTaxedBuy ? buyMarketingFee : 0) + (isTaxedSell ? sellMarketingFee : 0);
+        // take the fee if it is a buy or sell.
+        uint256 fee = (isTaxedBuy ? buyFee : 0) + (isTaxedSell ? sellFee : 0);
 
-        // compute the fee amount.
-        uint256 transferRewardFeeAmount = (amount * rewardFee) / feeDenominator;
-        uint256 transferMarketingFeeAmount = (amount * marketingFee) / feeDenominator;
-        uint256 transferTotalFeeAmount = transferRewardFeeAmount + transferMarketingFeeAmount;
+        uint256 taxAmount = (amount * fee) / feeDenominator;
 
-        // compute the actual amount sent to receiver.
-        uint256 transferActualAmount = amount - transferTotalFeeAmount;
+        uint256 actualTransferAmount = amount - taxAmount;
 
         // add to blacklist while buying in dead block.
         if (isTaxedBuy && _isDeadBlock()) {
@@ -570,21 +540,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         // prevents max wallet for regular addresses.
         if (!_isExcludedFromMaxWallet(to)) {
-            require(transferActualAmount + balanceOf(to) <= maxWallet, "!maxWallet");
+            require(actualTransferAmount + balanceOf(to) <= maxWallet, "!maxWallet");
+        }
+
+        // transfer the tax to this contract if any.
+        if (taxAmount > 0) {
+            super._update(from, address(this), taxAmount);
+        }
+
+        // swaps the tax to eth if it is a taxed sell.
+        if (isTaxedSell) {
+            swapCollectedTax(0);
         }
 
         // transfer the actual amount.
-        super._update(from, to, transferActualAmount);
-
-        // accout for the marketing fee if any.
-        if (transferMarketingFeeAmount > 0) {
-            marketingAmount += transferMarketingFeeAmount;
-        }
-
-        // transfer the total fee amount to this contract if any.
-        if (transferTotalFeeAmount > 0) {
-            super._update(from, address(this), transferTotalFeeAmount);
-        }
+        super._update(from, to, actualTransferAmount);
 
         // updates shareholders values.
         _updateShare(from);
@@ -610,31 +580,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         _earn(share);
 
         share.amount = balance;
-        share.lastUpdateBlock = block.number;
-    }
-
-    /**
-     * Swap amount of tokens for ETH to address and return the amount received.
-     */
-    function _swapTokenToETHV2(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
-        // return 0 if no amount given.
-        if (amountIn == 0) return 0;
-
-        // approve router to spend tokens.
-        _approve(address(this), address(router), amountIn);
-
-        // keep the original ETH balance to compute the swapped amount.
-        uint256 originalBalance = to.balance;
-
-        // swap the whole amount to eth.
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = router.WETH();
-
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, to, block.timestamp);
-
-        // return the received amount.
-        return to.balance - originalBalance;
     }
 
     /**
@@ -660,13 +605,5 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         return swapRouter.exactInputSingle{value: amountIn}(params);
     }
 
-    /**
-     * This contract cant receive ETH except from routers and pairs.
-     */
-    receive() external payable {
-        require(
-            msg.sender == address(router) || msg.sender == address(swapRouter) || pairs[msg.sender],
-            "cannot send eth to this contract"
-        );
-    }
+    receive() external payable {}
 }

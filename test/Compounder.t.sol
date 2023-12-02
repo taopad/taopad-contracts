@@ -69,6 +69,7 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(compounder.totalAssets(), balance1 + balance2);
 
         // distribute and compound the rewards (from first buy).
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         assertGt(compounder.rewardBalance(), 0);
@@ -105,6 +106,7 @@ contract CompounderTest is ERC20RewardsTest {
         depositToken(user2, balance2);
 
         // distribute the rewards and get the compounder reward amount.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         uint256 compounderRewardAmount = compounder.rewardBalance();
@@ -178,6 +180,7 @@ contract CompounderTest is ERC20RewardsTest {
         assertEq(user2.shareBalance, previewDeposit2);
 
         // distribute and compound.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         compounder.compound(0);
@@ -276,6 +279,7 @@ contract CompounderTest is ERC20RewardsTest {
         assertGt(user3.shareBalance, 0);
 
         // distribute and compound.
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         compounder.compound(0);
@@ -410,6 +414,7 @@ contract CompounderTest is ERC20RewardsTest {
 
         depositToken(user, originalBalance);
 
+        token.swapCollectedTax(0);
         token.distribute(0);
 
         // 25% of original user balance should be more than expected.

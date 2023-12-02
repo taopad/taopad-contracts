@@ -49,43 +49,29 @@ contract MiscTest is ERC20RewardsTest {
     function testSetFee() public {
         address user = vm.addr(1);
 
-        uint256 maxBuyFee = token.maxBuyFee();
-        uint256 maxSellFee = token.maxBuyFee();
+        uint24 feeDenominator = token.feeDenominator();
 
         // non owner reverts.
         vm.prank(user);
 
         vm.expectRevert();
 
-        token.setBuyFee(100, 100);
-
-        vm.prank(user);
-
-        vm.expectRevert();
-
-        token.setSellFee(100, 100);
+        token.setFee(100, 100, 100);
 
         // more than max fee reverts.
-        vm.expectRevert("!maxBuyFee");
-        token.setBuyFee(maxBuyFee + 1, 0);
-        vm.expectRevert("!maxBuyFee");
-        token.setBuyFee(0, maxBuyFee + 1);
-        vm.expectRevert("!maxBuyFee");
-        token.setBuyFee(maxBuyFee / 2, (maxBuyFee / 2) + 1);
-        vm.expectRevert("!maxSellFee");
-        token.setSellFee(maxSellFee + 1, 0);
-        vm.expectRevert("!maxSellFee");
-        token.setSellFee(0, maxSellFee + 1);
-        vm.expectRevert("!maxSellFee");
-        token.setSellFee(maxSellFee / 2, (maxSellFee / 2) + 1);
+        vm.expectRevert("!buyFee");
+        token.setFee(feeDenominator + 1, 0, 0);
+        vm.expectRevert("!sellFee");
+        token.setFee(0, feeDenominator + 1, 0);
+        vm.expectRevert("!marketingFee");
+        token.setFee(0, 0, feeDenominator + 1);
     }
 
     function testBuySellTax() public {
         address user = vm.addr(1);
 
         // put random taxes.
-        token.setBuyFee(721, 279); // 1000
-        token.setSellFee(1356, 644); // 2000
+        token.setFee(1000, 2000, 0);
 
         buyToken(user, 1 ether);
 
@@ -101,7 +87,8 @@ contract MiscTest is ERC20RewardsTest {
 
         sellToken(user, balance);
 
-        assertApproxEqRel(token.balanceOf(address(token)), buyTax + sellTax, 0.01e18);
+        assertEq(token.balanceOf(address(token)), 0);
+        assertApproxEqRel(address(token).balance, (buyTax + sellTax) / 1000, 0.01e18);
     }
 
     function testMaxWallet() public {
@@ -123,7 +110,7 @@ contract MiscTest is ERC20RewardsTest {
 
         router.swapExactETHForTokensSupportingFeeOnTransferTokens{value: 14 ether}(0, path, user1, block.timestamp);
 
-        // user dant be transfered more than 1% of supply.
+        // user cant be transfered more than 1% of supply.
         buyToken(user2, 1 ether);
         buyToken(user3, 13 ether);
 
@@ -264,24 +251,5 @@ contract MiscTest is ERC20RewardsTest {
 
         assertEq(randomToken.balanceOf(address(user)), 1000);
         assertEq(randomToken.balanceOf(address(token)), 0);
-    }
-
-    function testLastUpdateBlock() public {
-        address user = vm.addr(1);
-
-        uint256 newBlock1 = block.number + 1000;
-        uint256 newBlock2 = block.number + 2000;
-
-        vm.roll(newBlock1);
-
-        buyToken(user, 1 ether);
-
-        assertEq(token.lastUpdateBlock(user), newBlock1);
-
-        vm.roll(newBlock2);
-
-        buyToken(user, 1 ether);
-
-        assertEq(token.lastUpdateBlock(user), newBlock2);
     }
 }
