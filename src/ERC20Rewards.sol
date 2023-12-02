@@ -320,21 +320,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         uint256 ethBalance = address(this).balance;
 
-        if (ethBalance == 0) return;
+        if (ethBalance > 0) {
+            // take marketing tax here.
+            uint256 marketingAmount = (ethBalance * marketingFee) / feeDenominator;
 
-        // take marketing tax here.
-        uint256 marketingAmount = (ethBalance * marketingFee) / feeDenominator;
+            if (marketingAmount > 0) {
+                payable(marketingWallet).transfer(marketingAmount);
+            }
 
-        if (marketingAmount > 0) {
-            payable(marketingWallet).transfer(marketingAmount);
+            // swap eth to reward token.
+            uint256 ethToDistribute = ethBalance - marketingAmount;
+
+            if (ethToDistribute > 0) {
+                _swapETHToRewardV3(address(this), ethToDistribute, amountOutMinimum);
+            }
         }
-
-        // swap eth to reward token.
-        uint256 ethToDistribute = ethBalance - marketingAmount;
-
-        if (ethToDistribute == 0) return;
-
-        _swapETHToRewardV3(address(this), ethToDistribute, amountOutMinimum);
 
         // distribute the available rewards (swapped ETH tax + reward token donations).
         // === this contract balance of reward token minus what's remaining to claim.
