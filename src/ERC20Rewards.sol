@@ -201,6 +201,18 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
+     * Return the reward balance = reward token balance of this contract minus
+     * what's remaining to claim.
+     *
+     * Allow do display reward token donations in the frontend.
+     */
+    function rewardBalance() public view returns (uint256) {
+        uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
+
+        return rewardToken.balanceOf(address(this)) - amountToClaim;
+    }
+
+    /**
      * Return the amount of reward tokens the given address can claim.
      */
     function pendingRewards(address addr) external view returns (uint256) {
@@ -322,11 +334,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         _swapETHToRewardV3(address(this), ethToDistribute, amountOutMinimum);
 
-        // distribute the available rewards (swapped tax + reward token donations).
+        // distribute the available rewards (swapped ETH tax + reward token donations).
         // === this contract balance of reward token minus what's remaining to claim.
-        uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
-
-        uint256 amountToDistribute = rewardToken.balanceOf(address(this)) - amountToClaim;
+        uint256 amountToDistribute = rewardBalance();
 
         if (amountToDistribute == 0) return;
 
