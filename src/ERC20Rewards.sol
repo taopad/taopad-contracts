@@ -70,16 +70,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     mapping(address => bool) public isOptin;
 
     // =========================================================================
-    // Anti-bot and limitations
-    // =========================================================================
-
-    uint256 public maxWallet = type(uint256).max; // set to 1% in ininitialize
-    uint256 public startBlock = 0;
-    uint256 public deadBlocks = 2;
-
-    mapping(address => bool) public isBlacklisted;
-
-    // =========================================================================
     // marketing.
     // =========================================================================
 
@@ -103,7 +93,17 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     uint24 public marketingFee = 8000;
 
     // =========================================================================
-    // Events.
+    // anti-bot and limitations.
+    // =========================================================================
+
+    mapping(address => bool) public isBlacklisted;
+
+    uint256 public maxWallet = type(uint256).max; // set to 1% in initialize
+    uint256 public startBlock = 0;
+    uint8 public deadBlocks = 2;
+
+    // =========================================================================
+    // events.
     // =========================================================================
 
     event OptIn(address addr);
@@ -131,7 +131,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     // =========================================================================
-    // init contract.
+    // initialize contract.
     // =========================================================================
 
     /**
@@ -140,6 +140,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * It adds the total supply of the token with the sent ETH.
      *
      * LP tokens are sent to owner.
+     *
+     * Some team allocations can be defined before putting liquidity.
      */
     function initialize(uint256 _rawTotalSupply) external payable onlyOwner {
         address[] memory addrs = new address[](0);
@@ -204,7 +206,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * Return the reward balance = reward token balance of this contract minus
      * what's remaining to claim.
      *
-     * Allow do display reward token donations in the frontend.
+     * Allow to display reward token donations in the frontend.
      */
     function rewardBalance() public view returns (uint256) {
         uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
@@ -525,7 +527,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      *
      * - transfers from/to registered pairs are taxed.
      * - addresses buying in a deadblock are blacklisted and cant transfer tokens anymore.
-     * - prevent receiving address to get more than max wallet.
+     * - prevents receiving address to get more than max wallet.
      * - taxed tokens are sent to this very contract.
      * - on a taxed sell, the collected tax is swapped for eth.
      * - updates the shares of both the from and to addresses.
