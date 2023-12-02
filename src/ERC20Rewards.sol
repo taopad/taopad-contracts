@@ -274,6 +274,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     /**
      * Swap the collected tax to ETH.
+     *
+     * Pass minimal expected amount to prevent slippage/frontrun.
      */
     function swapCollectedTax(uint256 amountOutMin) public {
         // return if no tax collected.
