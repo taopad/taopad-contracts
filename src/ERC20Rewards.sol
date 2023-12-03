@@ -203,6 +203,20 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
+     * Return the amount of eth to swap = eth balance minus marketing tax.
+     *
+     * Allow to display what amout of eth will be swapped and sent as rewards
+     * on the frontend.
+     */
+    function amountToSwapETH() public view returns (uint256) {
+        uint256 ETHBalance = address(this).balance;
+
+        uint256 marketingAmount = (ETHBalance * marketingFee) / feeDenominator;
+
+        return ETHBalance - marketingAmount;
+    }
+
+    /**
      * Return the reward balance = reward token balance of this contract minus
      * what's remaining to claim.
      *
@@ -311,29 +325,25 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Distribute eth balance as reward token.
+     * Distribute reward token.
      *
      * Pass minimal expected amount to prevent slippage/frontrun.
      */
     function distribute(uint256 amountOutMinimum) external nonReentrant {
         if (totalShares == 0) return;
 
-        uint256 ethBalance = address(this).balance;
+        // swap available ETH for reward tokens.
+        uint256 amountIn = amountToSwapETH();
 
-        if (ethBalance > 0) {
-            // take marketing tax here.
-            uint256 marketingAmount = (ethBalance * marketingFee) / feeDenominator;
+        if (amountIn > 0) {
+            _swapETHToRewardV3(address(this), amountIn, amountOutMinimum);
+        }
 
-            if (marketingAmount > 0) {
-                payable(marketingWallet).transfer(marketingAmount);
-            }
+        // any remaining ETH balance is the marketing amount.
+        uint256 marketingAmount = address(this).balance;
 
-            // swap eth to reward token.
-            uint256 ethToDistribute = ethBalance - marketingAmount;
-
-            if (ethToDistribute > 0) {
-                _swapETHToRewardV3(address(this), ethToDistribute, amountOutMinimum);
-            }
+        if (marketingAmount > 0) {
+            payable(marketingWallet).transfer(marketingAmount);
         }
 
         // distribute the available rewards (swapped ETH tax + reward token donations).
