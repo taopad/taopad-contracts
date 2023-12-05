@@ -77,6 +77,16 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     address public marketingWallet;
 
     // =========================================================================
+    // anti-bot and limitations.
+    // =========================================================================
+
+    mapping(address => bool) public isBlacklisted;
+
+    uint256 public maxWallet = type(uint256).max; // set to 1% in initialize
+    uint256 public startBlock = 0;
+    uint8 public deadBlocks = 2;
+
+    // =========================================================================
     // pool options.
     // =========================================================================
 
@@ -91,16 +101,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     uint24 public buyFee = 2400;
     uint24 public sellFee = 2400;
     uint24 public marketingFee = 8000;
-
-    // =========================================================================
-    // anti-bot and limitations.
-    // =========================================================================
-
-    mapping(address => bool) public isBlacklisted;
-
-    uint256 public maxWallet = type(uint256).max; // set to 1% in initialize
-    uint256 public startBlock = 0;
-    uint8 public deadBlocks = 2;
 
     // =========================================================================
     // events.
