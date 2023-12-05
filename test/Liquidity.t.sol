@@ -19,24 +19,31 @@ contract LiquidityTest is ERC20RewardsTest {
         // buy some tokens and put them as liquidity.
         buyToken(provider, 1 ether);
 
-        addLiquidity(provider, 1 ether, token.balanceOf(provider));
+        uint256 balance = token.balanceOf(provider);
 
-        // ~0.24 eth has been refunded to the provider because
-        // only 760 tokens has been put as liq.
+        // ~ 760 tokens has been received.
+        assertApproxEqRel(balance, withDecimals(760), 0.01e18);
+
+        // So we send the 760 tokens with 0.76 eth. (1eth = 1000 tokens)
+        addLiquidity(provider, 0.76 ether, balance);
+
+        // all should be sent to the LP, only a few eth dust is send back.
         assertEq(token.balanceOf(provider), 0);
-        assertApproxEqRel(address(provider).balance, 0.24 ether, 0.01e18);
+        assertApproxEqAbs(address(provider).balance, 0, 0.01 ether);
 
         // adding liquidity is like a sell so the tax should have been sold.
+        // 24% tax by default: 1000 tokens * 0.76 (buy) * 0.76 (add liquidity) ~= 577.6.
+        // 1000 - 577.6 = 422.4 tokens were collected as tax ~= 0.4224 eth.
         assertEq(token.balanceOf(address(token)), 0);
-        assertApproxEqRel(address(token).balance, 0.422 ether, 0.01e18); // same computation as testSwap
+        assertApproxEqRel(address(token).balance, 0.4224 ether, 0.01e18);
 
         uint256 originalTaxAmountEth = address(token).balance;
 
         // removing liquidity.
         removeLiquidity(provider);
 
-        // so user end up with 0.81 ethers and 577 tokens ?
-        assertApproxEqRel(address(provider).balance, 0.57 ether + 0.24 ether, 0.01e18);
+        // no tax on removing liquidity so user should get back 577 tokens and 0.577 eth back.
+        assertApproxEqRel(address(provider).balance, 0.577 ether, 0.01e18);
         assertApproxEqRel(token.balanceOf(provider), withDecimals(577), 0.01e18);
 
         // no tax was collected on removing liquidity.
