@@ -6,44 +6,71 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {ERC20RewardsTest, ERC20Mock} from "./ERC20RewardsTest.t.sol";
 
 contract MiscTest is ERC20RewardsTest {
-    function testSetMarketingWallet() public {
+    function testSetOperator() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
         address user3 = vm.addr(3);
 
-        // by default the marketing wallet is deployer.
-        assertEq(token.marketingWallet(), address(this));
+        // by default operator is owner.
+        assertEq(token.operator(), address(this));
 
-        // owner can set a new marketing wallet.
-        token.setMarketingWallet(user1);
+        // by default owner can set operator.
+        token.setOperator(user1);
 
-        assertEq(token.marketingWallet(), user1);
+        assertEq(token.operator(), user1);
 
-        // non owner reverts.
-        vm.prank(user2);
+        // operator can set operator.
+        vm.prank(user1);
 
-        vm.expectRevert();
+        token.setOperator(user2);
 
-        token.setMarketingWallet(user3);
+        assertEq(token.operator(), user2);
+
+        // owner now reverts.
+        vm.expectRevert("!operator");
+
+        token.setOperator(user3);
+
+        // user reverts.
+        vm.prank(user1);
+
+        vm.expectRevert("!operator");
+
+        token.setOperator(user3);
     }
 
     function testSetPoolFee() public {
-        address user = vm.addr(1);
+        address user1 = vm.addr(1);
+        address user2 = vm.addr(2);
 
         // by default the pool fee is 10000.
         assertEq(token.poolFee(), 10000);
 
-        // owner can set a new pool fee.
+        // by default owner can set pool fee.
         token.setPoolFee(5000);
 
         assertEq(token.poolFee(), 5000);
 
-        // non owner reverts.
-        vm.prank(user);
+        // operator can set pool fee.
+        token.setOperator(user1);
 
-        vm.expectRevert();
+        vm.prank(user1);
 
-        token.setPoolFee(100);
+        token.setPoolFee(4000);
+
+        assertEq(token.poolFee(), 4000);
+
+        // owner now revert.
+        vm.expectRevert("!operator");
+
+        token.setPoolFee(3000);
+
+        // non operator reverts.
+        vm.prank(user2);
+
+        vm.expectRevert("!operator");
+
+        token.setPoolFee(3000);
     }
 
     function testSetFee() public {

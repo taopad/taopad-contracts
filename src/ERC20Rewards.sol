@@ -70,11 +70,14 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     mapping(address => bool) public isOptin;
 
     // =========================================================================
-    // marketing.
+    // operator address.
     // =========================================================================
 
-    // address where marketing tax is sent.
-    address public marketingWallet;
+    // the operator address receive marketing tax and can set pool fee.
+    // only operator can update operator address. Allows to renounce ownership
+    // while keep managing marketing wallet and update V3 poolFee.
+    // deployer/owner address by default.
+    address public operator;
 
     // =========================================================================
     // anti-bot and limitations.
@@ -121,8 +124,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC20(name, symbol) {
-        // marketing wallet is deployer by default.
-        marketingWallet = msg.sender;
+        // operator is deployer by default.
+        operator = msg.sender;
 
         // set the reward token scale factor.
         uint8 rewardTokenDecimals = rewardToken.decimals();
@@ -201,7 +204,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     // =========================================================================
-    // exposed user functions.
+    // exposed contract values.
     // =========================================================================
 
     /**
@@ -236,6 +239,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     function pendingRewards(address addr) external view returns (uint256) {
         return _pendingRewards(shareholders[addr]);
     }
+
+    // =========================================================================
+    // exposed user functions.
+    // =========================================================================
 
     /**
      * Claim reward tokens and send them to given address.
@@ -345,7 +352,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 marketingAmount = address(this).balance;
 
         if (marketingAmount > 0) {
-            payable(marketingWallet).transfer(marketingAmount);
+            payable(operator).transfer(marketingAmount);
         }
 
         // distribute the available rewards (swapped ETH tax + reward token donations).
@@ -392,16 +399,22 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         marketingFee = _marketingFee;
     }
 
-    function setPoolFee(uint24 _poolFee) external onlyOwner {
-        poolFee = _poolFee;
-    }
-
-    function setMarketingWallet(address _marketingWallet) external onlyOwner {
-        marketingWallet = _marketingWallet;
-    }
-
     function removeFromBlacklist(address addr) external onlyOwner {
         _removeFromBlacklist(addr);
+    }
+
+    // =========================================================================
+    // exposed operator functions.
+    // =========================================================================
+
+    function setOperator(address _operator) external {
+        require(msg.sender == operator, "!operator");
+        operator = _operator;
+    }
+
+    function setPoolFee(uint24 _poolFee) external {
+        require(msg.sender == operator, "!operator");
+        poolFee = _poolFee;
     }
 
     // =========================================================================

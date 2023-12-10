@@ -43,7 +43,7 @@ contract DistributeTest is ERC20RewardsTest {
         assertGt(token.pendingRewards(user3), 0);
         assertEq(token.pendingRewards(user2), token.pendingRewards(user3));
         assertApproxEqAbs(token.pendingRewards(user1), token.pendingRewards(user2) + token.pendingRewards(user3), 1);
-        assertApproxEqRel(token.marketingWallet().balance, 0.02 ether, 0.01e18); // tax is 100 tokens ~= 0.1 eth, marketing is 1/5
+        assertApproxEqRel(token.operator().balance, 0.02 ether, 0.01e18); // tax is 100 tokens ~= 0.1 eth, marketing is 1/5
 
         // claim everything.
         vm.prank(user1);
