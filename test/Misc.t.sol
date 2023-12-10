@@ -49,22 +49,35 @@ contract MiscTest is ERC20RewardsTest {
     function testSetFee() public {
         address user = vm.addr(1);
 
-        uint24 feeDenominator = token.feeDenominator();
+        uint24 maxSwapFee = token.maxSwapFee();
+        uint24 maxMarketingFee = token.maxMarketingFee();
+
+        // default fee is 24%, 24%, 80%
+        assertEq(token.buyFee(), 2400);
+        assertEq(token.sellFee(), 2400);
+        assertEq(token.marketingFee(), 8000);
+
+        // owner can set fee.
+        token.setFee(101, 102, 103);
+
+        assertEq(token.buyFee(), 101);
+        assertEq(token.sellFee(), 102);
+        assertEq(token.marketingFee(), 103);
 
         // non owner reverts.
         vm.prank(user);
 
         vm.expectRevert();
 
-        token.setFee(100, 100, 100);
+        token.setFee(101, 102, 103);
 
         // more than max fee reverts.
         vm.expectRevert("!buyFee");
-        token.setFee(feeDenominator + 1, 0, 0);
+        token.setFee(maxSwapFee + 1, 0, 0);
         vm.expectRevert("!sellFee");
-        token.setFee(0, feeDenominator + 1, 0);
+        token.setFee(0, maxSwapFee + 1, 0);
         vm.expectRevert("!marketingFee");
-        token.setFee(0, 0, feeDenominator + 1);
+        token.setFee(0, 0, maxMarketingFee + 1);
     }
 
     function testBuySellTax() public {

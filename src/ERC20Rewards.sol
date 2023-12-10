@@ -96,6 +96,8 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // fees.
     // =========================================================================
 
+    uint24 public constant maxSwapFee = 3000;
+    uint24 public constant maxMarketingFee = 8000;
     uint24 public constant feeDenominator = 10000;
 
     uint24 public buyFee = 2400;
@@ -381,9 +383,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     function setFee(uint24 _buyFee, uint24 _sellFee, uint24 _marketingFee) external onlyOwner {
-        require(_buyFee <= feeDenominator, "!buyFee");
-        require(_sellFee <= feeDenominator, "!sellFee");
-        require(_marketingFee <= feeDenominator, "!marketingFee");
+        require(_buyFee <= maxSwapFee, "!buyFee");
+        require(_sellFee <= maxSwapFee, "!sellFee");
+        require(_marketingFee <= maxMarketingFee, "!marketingFee");
 
         buyFee = _buyFee;
         sellFee = _sellFee;
