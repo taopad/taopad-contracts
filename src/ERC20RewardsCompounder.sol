@@ -157,7 +157,7 @@ contract ERC20RewardsCompounder is Ownable, ERC4626, ReentrancyGuard {
      * Compound pending rewards into more assets.
      */
     function _compound(uint256 amountOutMin) private {
-        token.claim();
+        token.claim(address(this));
 
         uint256 amountToCompound = rewardToken.balanceOf(address(this));
 

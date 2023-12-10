@@ -112,7 +112,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     event OptOut(address addr);
     event AddToBlacklist(address addr);
     event RemoveFromBlacklist(address addr);
-    event Claim(address indexed addr, uint256 amount);
+    event Claim(address indexed addr, address indexed to, uint256 amount);
     event Distribute(address indexed addr, uint256 amount);
     event Sweep(address indexed addr, address indexed token, uint256 amount);
 
@@ -238,9 +238,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Claim reward tokens.
+     * Claim reward tokens and send them to given address.
      */
-    function claim() external nonReentrant {
+    function claim(address to) external nonReentrant {
         Share storage share = shareholders[msg.sender];
 
         _earn(share);
@@ -253,9 +253,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         totalRewardClaimed += amountToClaim;
 
-        rewardToken.safeTransfer(msg.sender, amountToClaim);
+        rewardToken.safeTransfer(to, amountToClaim);
 
-        emit Claim(msg.sender, amountToClaim);
+        emit Claim(msg.sender, to, amountToClaim);
     }
 
     /**

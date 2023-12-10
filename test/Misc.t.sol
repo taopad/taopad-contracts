@@ -161,6 +161,41 @@ contract MiscTest is ERC20RewardsTest {
         assertGt(token.balanceOf(user4), token.totalSupply() / 100);
     }
 
+    function testClaimToAnotherAddress() public {
+        address user1 = vm.addr(1);
+        address user2 = vm.addr(2);
+
+        // both users buy tokens.
+        buyToken(user1, 1 ether);
+        buyToken(user2, 2 ether);
+
+        // distribute the rewards.
+        token.swapCollectedTax(0);
+        token.distribute(0);
+
+        // users have pending rewards.
+        uint256 pendingRewards1 = token.pendingRewards(user1);
+        uint256 pendingRewards2 = token.pendingRewards(user2);
+
+        assertGt(pendingRewards1, 0);
+        assertGt(pendingRewards2, 0);
+
+        // user1 claims
+        vm.prank(user1);
+
+        token.claim(user1);
+
+        assertEq(rewardToken.balanceOf(user1), pendingRewards1);
+
+        // user2 claims to user1.
+        vm.prank(user2);
+
+        token.claim(user1);
+
+        assertEq(rewardToken.balanceOf(user1), pendingRewards1 + pendingRewards2);
+        assertEq(rewardToken.balanceOf(user2), 0);
+    }
+
     function testBurn() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);

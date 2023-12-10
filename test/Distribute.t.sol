@@ -48,15 +48,15 @@ contract DistributeTest is ERC20RewardsTest {
         // claim everything.
         vm.prank(user1);
 
-        token.claim();
+        token.claim(user1);
 
         vm.prank(user2);
 
-        token.claim();
+        token.claim(user2);
 
         vm.prank(user3);
 
-        token.claim();
+        token.claim(user3);
 
         assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
@@ -110,15 +110,15 @@ contract DistributeTest is ERC20RewardsTest {
 
         vm.prank(user1);
 
-        token.claim();
+        token.claim(user1);
 
         vm.prank(user2);
 
-        token.claim();
+        token.claim(user2);
 
         vm.prank(user3);
 
-        token.claim();
+        token.claim(user3);
 
         assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
@@ -167,15 +167,15 @@ contract DistributeTest is ERC20RewardsTest {
 
         vm.prank(user1);
 
-        token.claim();
+        token.claim(user1);
 
         vm.prank(user2);
 
-        token.claim();
+        token.claim(user2);
 
         vm.prank(user3);
 
-        token.claim();
+        token.claim(user3);
 
         assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);
@@ -213,15 +213,15 @@ contract DistributeTest is ERC20RewardsTest {
 
         vm.prank(user1);
 
-        token.claim();
+        token.claim(user1);
 
         vm.prank(user2);
 
-        token.claim();
+        token.claim(user2);
 
         vm.prank(user3);
 
-        token.claim();
+        token.claim(user3);
 
         assertEq(token.balanceOf(address(token)), 0);
         assertGt(rewardToken.balanceOf(user1), 0);

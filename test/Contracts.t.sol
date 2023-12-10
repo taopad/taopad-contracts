@@ -20,8 +20,8 @@ contract DummyContract {
         token.rewardOptout();
     }
 
-    function claim() external {
-        token.claim();
+    function claim(address to) external {
+        token.claim(to);
     }
 }
 
@@ -97,9 +97,9 @@ contract ContractsTest is ERC20RewardsTest {
         // ensure both can claim.
         vm.prank(user);
 
-        token.claim();
+        token.claim(user);
 
-        dummy.claim();
+        dummy.claim(address(dummy));
 
         assertEq(rewardToken.balanceOf(user), userPendingRewards);
         assertEq(rewardToken.balanceOf(address(dummy)), contractPendingRewards);
