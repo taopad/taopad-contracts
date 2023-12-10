@@ -27,14 +27,14 @@ contract ERC20RewardsTest is Test {
     function setUp() public {
         vm.deal(address(this), 1000 ether);
 
-        token = new ERC20Rewards("Reward token", "RTK");
+        token = new ERC20Rewards("Reward token", "RTK", 1e6);
         compounder = new ERC20RewardsCompounder("Reward token share", "sRTK", token);
 
         router = token.router();
         swapRouter = token.swapRouter();
         rewardToken = token.rewardToken();
 
-        token.initialize{value: 1000 ether}(1e6);
+        token.initialize{value: 1000 ether}();
 
         vm.roll(block.number + token.deadBlocks() + 1);
     }

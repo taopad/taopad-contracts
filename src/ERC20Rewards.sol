@@ -123,7 +123,10 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // constructor.
     // =========================================================================
 
-    constructor(string memory name, string memory symbol) Ownable(msg.sender) ERC20(name, symbol) {
+    constructor(string memory name, string memory symbol, uint256 _totalSupply)
+        Ownable(msg.sender)
+        ERC20(name, symbol)
+    {
         // operator is deployer by default.
         operator = msg.sender;
 
@@ -133,74 +136,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         require(rewardTokenDecimals <= 18, "reward token decimals must be <= 18");
 
         SCALE_FACTOR = 10 ** (18 - rewardTokenDecimals);
-    }
 
-    // =========================================================================
-    // initialize contract.
-    // =========================================================================
-
-    /**
-     * Initialize the contract by creating the liquidy pool.
-     *
-     * It adds the total supply of the token with the sent ETH.
-     *
-     * LP tokens are sent to owner.
-     *
-     * Some team allocations can be defined before putting liquidity.
-     */
-    function initialize(uint256 _rawTotalSupply) external payable onlyOwner {
-        address[] memory addrs = new address[](0);
-        uint256[] memory allocs = new uint256[](0);
-
-        _initialize(_rawTotalSupply, addrs, allocs);
-    }
-
-    function initialize(uint256 _rawTotalSupply, address[] memory addrs, uint256[] memory allocs)
-        external
-        payable
-        onlyOwner
-    {
-        _initialize(_rawTotalSupply, addrs, allocs);
-    }
-
-    function _initialize(uint256 _rawTotalSupply, address[] memory addrs, uint256[] memory allocs) private {
-        require(msg.value > 0, "!liquidity");
-        require(startBlock == 0, "!initialized");
-        require(addrs.length == allocs.length, "!allocations");
-
-        // get the token decimal const.
-        uint256 decimalConst = 10 ** decimals();
-
-        // mint total supply to this contract.
-        uint256 _totalSupply = _rawTotalSupply * decimalConst;
-
-        _mint(address(this), _totalSupply);
-
-        // distribute allocations.
-        uint8 nbAllocs = uint8(addrs.length);
-
-        for (uint8 i = 0; i < nbAllocs; i++) {
-            _transfer(address(this), addrs[i], allocs[i] * decimalConst);
-        }
-
-        // the remaining balance will be put in the LP.
-        uint256 balance = balanceOf(address(this));
-
-        // create an amm pair with WETH.
-        // as a contract, pair is automatically excluded from rewards.
-        createAmmPairWith(router.WETH());
-
-        // approve router to use total balance.
-        _approve(address(this), address(router), balance);
-
-        // add liquidity and send LP to owner.
-        router.addLiquidityETH{value: msg.value}(address(this), balance, 0, 0, msg.sender, block.timestamp);
-
-        // start deadblocks from there.
-        startBlock = block.number;
-
-        // init max wallet to 1%.
-        maxWallet = _totalSupply / 100;
+        // mint total supply to itself.
+        _mint(address(this), _totalSupply * 10 ** decimals());
     }
 
     // =========================================================================
@@ -385,6 +323,12 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // exposed admin functions.
     // =========================================================================
 
+    function allocate(address to, uint256 amount) external onlyOwner {
+        require(startBlock == 0, "!initialized");
+
+        this.transfer(to, amount);
+    }
+
     function removeLimits() external onlyOwner {
         maxWallet = type(uint256).max;
     }
@@ -401,6 +345,30 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     function removeFromBlacklist(address addr) external onlyOwner {
         _removeFromBlacklist(addr);
+    }
+
+    function initialize() external payable onlyOwner {
+        require(msg.value > 0, "!liquidity");
+        require(startBlock == 0, "!initialized");
+
+        // start deadblocks from there.
+        startBlock = block.number;
+
+        // init max wallet to 1%.
+        maxWallet = totalSupply() / 100;
+
+        // the all balance will be put in the LP.
+        uint256 balance = balanceOf(address(this));
+
+        // create an amm pair with WETH.
+        // as a contract, pair is automatically excluded from rewards.
+        createAmmPairWith(router.WETH());
+
+        // approve router to use total balance.
+        _approve(address(this), address(router), balance);
+
+        // add liquidity and send LP to owner.
+        router.addLiquidityETH{value: msg.value}(address(this), balance, 0, 0, msg.sender, block.timestamp);
     }
 
     // =========================================================================
@@ -434,7 +402,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * Blacklisted addresses are excluded too so they can buy as much as they want.
      */
     function _isExcludedFromMaxWallet(address addr) private view returns (bool) {
-        return addr == address(this) || addr == address(router) || pairs[addr] || isBlacklisted[addr];
+        return address(this) == addr || address(router) == addr || pairs[addr] || isBlacklisted[addr];
     }
 
     /**
@@ -449,9 +417,13 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      *
      * - addresses of contracts that didn't opted in for rewards.
      * - blacklisted addresses.
+     * - zero address to save gas on mint/burn (its balance is always 0 so it would never get shares anyway)
+     * - this contract address is removed too because address(this).code.length == 0 in
+     *   the constructor so it is not excluded from mint.
      */
     function _isExcludedFromRewards(address addr) private view returns (bool) {
-        return (addr.code.length > 0 && !isOptin[addr]) || isBlacklisted[addr];
+        return address(0) == addr || address(this) == addr || (addr.code.length > 0 && !isOptin[addr])
+            || isBlacklisted[addr];
     }
 
     /**

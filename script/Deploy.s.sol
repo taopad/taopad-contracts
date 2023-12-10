@@ -9,7 +9,7 @@ contract Deploy is Script {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
 
         vm.startBroadcast(deployerPrivateKey);
-        new ERC20Rewards("Reward token", "RTK");
+        new ERC20Rewards("Reward token", "RTK", 1e6);
         vm.stopBroadcast();
     }
 }

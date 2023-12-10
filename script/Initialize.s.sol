@@ -5,9 +5,6 @@ import {Script} from "forge-std/Script.sol";
 import {ERC20Rewards} from "../src/ERC20Rewards.sol";
 
 contract Initialize is Script {
-    address[] addrs;
-    uint256[] allocs;
-
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address ERC20RewardsAddress = vm.envAddress("ERC20_REWARDS_ADDRESS");
@@ -15,7 +12,7 @@ contract Initialize is Script {
         ERC20Rewards token = ERC20Rewards(payable(ERC20RewardsAddress));
 
         vm.startBroadcast(deployerPrivateKey);
-        token.initialize{value: 1000 ether}(1e6, addrs, allocs);
+        token.initialize{value: 1000 ether}();
         vm.stopBroadcast();
     }
 }
