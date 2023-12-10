@@ -116,5 +116,11 @@ contract ERC20RewardsTest is Test {
         swapRouter.exactInputSingle{value: amountIn}(params);
     }
 
+    function addRewards(uint256 amountIn) internal {
+        buyRewardToken(address(this), amountIn);
+
+        rewardToken.transfer(address(token), rewardToken.balanceOf(address(this)));
+    }
+
     receive() external payable {}
 }

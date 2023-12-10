@@ -400,10 +400,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         marketingWallet = _marketingWallet;
     }
 
-    function addToBlacklist(address addr) external onlyOwner {
-        _addToBlacklist(addr);
-    }
-
     function removeFromBlacklist(address addr) external onlyOwner {
         _removeFromBlacklist(addr);
     }

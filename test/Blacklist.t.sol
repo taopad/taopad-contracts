@@ -44,223 +44,193 @@ contract BlacklistTest is ERC20RewardsTest {
         assertGt(token.balanceOf(user4), 0);
     }
 
-    function testBlacklistAdmin() public {
+    function testRemoveFromBlacklist() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
 
+        // blacklist user1.
+        vm.roll(token.startBlock());
+
         buyToken(user1, 1 ether);
-        buyToken(user2, 1 ether);
 
-        // user is not blacklisted by default.
-        assertFalse(token.isBlacklisted(user1));
+        uint256 balance1 = token.balanceOf(user1);
 
-        // user can be blacklisted.
-        token.addToBlacklist(user1);
-
+        assertGt(balance1, 0);
         assertTrue(token.isBlacklisted(user1));
 
-        // user can be removed from blacklist.
+        // user2 buys.
+        vm.roll(token.startBlock() + token.deadBlocks() + 1);
+
+        buyToken(user2, 1 ether);
+
+        uint256 balance2 = token.balanceOf(user2);
+
+        assertGt(balance2, 0);
+        assertFalse(token.isBlacklisted(user2));
+
+        // total shares is only user2 balance.
+        assertEq(token.totalShares(), balance2);
+
+        // remove from blacklist reverts for non owner.
+        vm.prank(user2);
+
+        vm.expectRevert();
+
+        token.removeFromBlacklist(user1);
+
+        // owner can remove from blacklist.
         token.removeFromBlacklist(user1);
 
         assertFalse(token.isBlacklisted(user1));
+        assertEq(token.totalShares(), balance1 + balance2);
 
-        // add to blacklist reverts for non owner.
-        vm.prank(user1);
+        // can remove many times from blacklist.
+        token.removeFromBlacklist(user1);
 
-        vm.expectRevert();
-
-        token.addToBlacklist(user2);
-
-        // remove from blacklist reverts for non owner.
-        vm.prank(user1);
-
-        vm.expectRevert();
-
-        token.removeFromBlacklist(user2);
-
-        // add to blacklist many times does not update total shares.
-        token.addToBlacklist(user2);
-
-        assertEq(token.totalShares(), token.balanceOf(user1));
-
-        token.addToBlacklist(user2);
-
-        assertEq(token.totalShares(), token.balanceOf(user1));
-
-        // remove from blacklist many times does not update total shares.
-        token.removeFromBlacklist(user2);
-
-        assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2));
-
-        token.removeFromBlacklist(user2);
-
-        assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2));
+        assertFalse(token.isBlacklisted(user1));
+        assertEq(token.totalShares(), balance1 + balance2);
     }
 
     function testBlacklistTransfer() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
 
-        address[] memory path = new address[](2);
-        path[0] = address(token);
-        path[1] = router.WETH();
+        // blacklist user1.
+        vm.roll(token.startBlock());
 
-        // add user to blacklist.
-        token.addToBlacklist(user1);
-
-        // blacklisted user can still buy.
         buyToken(user1, 1 ether);
 
-        uint256 balance = token.balanceOf(user1);
+        uint256 balance1 = token.balanceOf(user1);
 
-        assertGt(balance, 0);
-        assertEq(token.totalShares(), 0);
+        assertGt(balance1, 0);
+        assertTrue(token.isBlacklisted(user1));
 
-        // blacklisted user cant sell.
-        vm.prank(user1);
+        // user2 buys.
+        vm.roll(token.startBlock() + token.deadBlocks() + 1);
 
-        token.approve(address(router), balance);
+        buyToken(user2, 1 ether);
 
-        vm.prank(user1);
+        uint256 balance2 = token.balanceOf(user2);
 
-        vm.expectRevert("TransferHelper: TRANSFER_FROM_FAILED");
+        assertGt(balance2, 0);
+        assertFalse(token.isBlacklisted(user2));
 
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(balance, 0, path, user1, block.timestamp);
+        // keep half of user2 balance.
+        uint256 half = balance2 / 2;
 
-        assertEq(token.balanceOf(user1), balance);
+        assertGt(half, 0);
 
-        // blacklisted user cant transfer.
+        // blacklisted user can still receive tokens.
+        vm.prank(user2);
+
+        token.transfer(user1, half);
+
+        assertEq(token.balanceOf(user1), balance1 + half);
+        assertEq(token.balanceOf(user2), balance2 - half);
+
+        // blacklisted user can still receive tokens with transfered from.
+        vm.prank(user2);
+
+        token.approve(address(this), half);
+
+        token.transferFrom(user2, user1, half);
+
+        assertEq(token.balanceOf(user1), balance1 + half * 2);
+        assertEq(token.balanceOf(user2), balance2 - half * 2);
+
+        // blacklisted user can't send tokens anymore.
         vm.prank(user1);
 
         vm.expectRevert("blacklisted");
 
-        token.transfer(user2, balance);
+        token.transfer(user2, half);
 
-        assertEq(token.balanceOf(user1), balance);
+        // blacklisted user can't send with a transfer from.
+        vm.prank(user1);
 
-        // remove user from blacklist.
+        token.approve(address(this), half);
+
+        vm.expectRevert("blacklisted");
+
+        token.transferFrom(user1, user2, half);
+
+        // remove user1 from blacklist.
         token.removeFromBlacklist(user1);
 
-        assertEq(token.totalShares(), balance);
+        assertFalse(token.isBlacklisted(user1));
 
-        // he can now sell.
-        uint256 sellAmount = balance / 2;
-        uint256 remainingAmount = balance - sellAmount;
-
+        // user1 can send tokens again.
         vm.prank(user1);
 
-        token.approve(address(router), sellAmount);
+        token.transfer(user2, half);
 
+        assertEq(token.balanceOf(user1), balance1 + half);
+        assertEq(token.balanceOf(user2), balance2 - half);
+
+        // user1 can send from a transfer from again.
         vm.prank(user1);
 
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(sellAmount, 0, path, user1, block.timestamp);
+        token.approve(address(this), half);
 
-        assertEq(token.balanceOf(user1), remainingAmount);
-        assertEq(token.totalShares(), remainingAmount);
+        token.transferFrom(user1, user2, half);
 
-        // he can now transfer.
-        vm.prank(user1);
-
-        token.transfer(user2, remainingAmount);
-
-        assertEq(token.balanceOf(user1), 0);
-        assertEq(token.balanceOf(user2), remainingAmount);
-        assertEq(token.totalShares(), remainingAmount);
+        assertEq(token.balanceOf(user1), balance1);
+        assertEq(token.balanceOf(user2), balance2);
     }
 
     function testBlacklistDistribution() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
-        address user3 = vm.addr(3);
 
-        // add some shares.
+        // blacklist user1.
+        vm.roll(token.startBlock());
+
         buyToken(user1, 1 ether);
+
+        uint256 balance1 = token.balanceOf(user1);
+
+        assertGt(balance1, 0);
+        assertTrue(token.isBlacklisted(user1));
+
+        // user2 buys.
+        vm.roll(token.startBlock() + token.deadBlocks() + 1);
+
         buyToken(user2, 1 ether);
 
-        assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2));
+        uint256 balance2 = token.balanceOf(user2);
+
+        assertGt(balance2, 0);
+        assertFalse(token.isBlacklisted(user2));
+
+        // total shares are user2 balance.
+        assertEq(token.totalShares(), balance2);
 
         // distribute the rewards.
         token.swapCollectedTax(0);
         token.distribute(0);
 
+        // only user2 has rewards.
         uint256 pendingRewards1 = token.pendingRewards(user1);
         uint256 pendingRewards2 = token.pendingRewards(user2);
-        uint256 pendingRewards3 = token.pendingRewards(user3);
 
-        assertGt(pendingRewards1, 0);
+        assertEq(pendingRewards1, 0);
         assertGt(pendingRewards2, 0);
-        assertEq(pendingRewards3, 0);
 
-        // adding user to blacklist remove its shares but pending rewards are the same.
-        token.addToBlacklist(user2);
+        // remove user1 from blacklist.
+        token.removeFromBlacklist(user1);
 
-        assertEq(token.totalShares(), token.balanceOf(user1));
-        assertEq(token.pendingRewards(user1), pendingRewards1);
-        assertEq(token.pendingRewards(user2), pendingRewards2);
+        assertFalse(token.isBlacklisted(user1));
 
-        // add more shares.
-        buyToken(user3, 1 ether);
+        // total shares are now user1 + user2 balance.
+        assertEq(token.totalShares(), balance1 + balance2);
 
-        assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user3));
+        // add rewards and distribute.
+        addRewards(1 ether);
 
-        // distribute the rewards.
-        token.swapCollectedTax(0);
         token.distribute(0);
 
-        assertGt(token.pendingRewards(user1), pendingRewards1);
-        assertEq(token.pendingRewards(user2), pendingRewards2);
-        assertGt(token.pendingRewards(user3), pendingRewards3);
-
-        pendingRewards1 = token.pendingRewards(user1);
-        pendingRewards3 = token.pendingRewards(user3);
-
-        // removing user from blacklist now take his shares into account.
-        token.removeFromBlacklist(user2);
-
-        assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2) + token.balanceOf(user3));
-
-        // add more shares.
-        buyToken(user3, 1 ether);
-
-        assertEq(token.totalShares(), token.balanceOf(user1) + token.balanceOf(user2) + token.balanceOf(user3));
-
-        // distribute the rewards.
-        token.swapCollectedTax(0);
-        token.distribute(0);
-
-        assertGt(token.pendingRewards(user1), pendingRewards1);
+        // user1 now has rewards.
+        assertGt(token.pendingRewards(user1), 0);
         assertGt(token.pendingRewards(user2), pendingRewards2);
-        assertGt(token.pendingRewards(user3), pendingRewards3);
-
-        pendingRewards1 = token.pendingRewards(user1);
-        pendingRewards2 = token.pendingRewards(user2);
-        pendingRewards3 = token.pendingRewards(user3);
-
-        // make sure user1 can claim.
-        vm.prank(user1);
-
-        token.claim();
-
-        assertEq(token.pendingRewards(user1), 0);
-        assertEq(rewardToken.balanceOf(user1), pendingRewards1);
-
-        // make sure user2 can claim.
-        vm.prank(user2);
-
-        token.claim();
-
-        assertEq(token.pendingRewards(user2), 0);
-        assertEq(rewardToken.balanceOf(user2), pendingRewards2);
-
-        // make sure user3 can claim.
-        vm.prank(user3);
-
-        token.claim();
-
-        assertEq(token.pendingRewards(user3), 0);
-        assertEq(rewardToken.balanceOf(user3), pendingRewards3);
-
-        // only dust should stay in contract balance.
-        assertApproxEqAbs(rewardToken.balanceOf(address(token)), 0, 3);
     }
 }
