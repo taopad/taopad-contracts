@@ -327,4 +327,25 @@ contract MiscTest is ERC20RewardsTest {
         assertEq(randomToken.balanceOf(address(user)), 1000);
         assertEq(randomToken.balanceOf(address(token)), 0);
     }
+
+    function testDeadWalletDoesNotGetShares() public {
+        address user = vm.addr(1);
+
+        address dead = 0x000000000000000000000000000000000000dEaD;
+
+        buyToken(user, 1 ether);
+
+        uint256 balance = token.balanceOf(user);
+
+        assertGt(balance, 0);
+        assertEq(token.totalShares(), balance);
+
+        vm.prank(user);
+
+        token.transfer(dead, balance);
+
+        assertEq(token.balanceOf(user), 0);
+        assertEq(token.totalShares(), 0);
+        assertEq(token.balanceOf(dead), balance);
+    }
 }

@@ -418,12 +418,12 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * - addresses of contracts that didn't opted in for rewards.
      * - blacklisted addresses.
      * - zero address to save gas on mint/burn (its balance is always 0 so it would never get shares anyway)
-     * - this contract address is removed too because address(this).code.length == 0 in
-     *   the constructor so it is not excluded from mint.
+     * - this contract address is removed too because address(this).code.length == 0 in the constructor.
+     * - remove dead address because people are used to it.
      */
     function _isExcludedFromRewards(address addr) private view returns (bool) {
         return address(0) == addr || address(this) == addr || (addr.code.length > 0 && !isOptin[addr])
-            || isBlacklisted[addr];
+            || isBlacklisted[addr] || 0x000000000000000000000000000000000000dEaD == addr;
     }
 
     /**
