@@ -22,8 +22,11 @@ contract SwapTest is ERC20RewardsTest {
 
         assertEq(token.balanceOf(user), 0);
         assertEq(token.balanceOf(address(token)), 0);
-        assertApproxEqRel(address(token).balance, 0.422 ether, 0.01e18);
+        assertApproxEqRel(address(token).balance, 0.084 ether, 0.01e18);
+        assertApproxEqRel(address(token.operator()).balance, 0.337 ether, 0.01e18);
+        assertApproxEqRel(address(token).balance + address(token.operator()).balance, 0.422 ether, 0.01e18);
 
         // (total tax is 240 + (760 * 0.24) = 422 and 1000 tokens =~ 1 eth)
+        // 20% is in the contract as rewards (0.084) and 80% in marketing wallet (0.337)
     }
 }

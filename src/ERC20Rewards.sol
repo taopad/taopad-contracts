@@ -146,20 +146,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Return the amount of eth to swap = eth balance minus marketing tax.
-     *
-     * Allow to display what amout of eth will be swapped and sent as rewards
-     * on the frontend.
-     */
-    function amountToSwapETH() public view returns (uint256) {
-        uint256 ETHBalance = address(this).balance;
-
-        uint256 marketingAmount = (ETHBalance * marketingFee) / feeDenominator;
-
-        return ETHBalance - marketingAmount;
-    }
-
-    /**
      * Return the reward balance = reward token balance of this contract minus
      * what's remaining to claim.
      *
@@ -258,17 +244,15 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
         if (amountIn == 0) return;
 
-        // approve router to spend tokens.
-        _approve(address(this), address(router), amountIn);
+        // swap tax to eth.
+        uint256 collectedEth = _swapTokenToETHV2(address(this), amountIn, amountOutMin);
 
-        // swap the whole amount to eth.
-        address[] memory path = new address[](2);
-        path[0] = address(this);
-        path[1] = router.WETH();
+        // collect marketing tax.
+        uint256 marketingAmount = (collectedEth * marketingFee) / feeDenominator;
 
-        router.swapExactTokensForETHSupportingFeeOnTransferTokens(
-            amountIn, amountOutMin, path, address(this), block.timestamp
-        );
+        if (marketingAmount > 0) {
+            payable(operator).transfer(marketingAmount);
+        }
     }
 
     /**
@@ -279,18 +263,11 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     function distribute(uint256 amountOutMinimum) external nonReentrant {
         if (totalShares == 0) return;
 
-        // swap available ETH for reward tokens.
-        uint256 amountIn = amountToSwapETH();
+        // swap eth balance to reward token.
+        uint256 amountIn = address(this).balance;
 
         if (amountIn > 0) {
             _swapETHToRewardV3(address(this), amountIn, amountOutMinimum);
-        }
-
-        // any remaining ETH balance is the marketing amount.
-        uint256 marketingAmount = address(this).balance;
-
-        if (marketingAmount > 0) {
-            payable(operator).transfer(marketingAmount);
         }
 
         // distribute the available rewards (swapped ETH tax + reward token donations).
@@ -587,6 +564,28 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         _earn(share);
 
         share.amount = balance;
+    }
+
+    /**
+     * Swap amount of this token for ETH to address and return the amount received.
+     */
+    function _swapTokenToETHV2(address to, uint256 amountIn, uint256 amountOutMin) private returns (uint256) {
+        // return 0 if no amount given.
+        if (amountIn == 0) return 0;
+
+        // approve router to spend tokens.
+        _approve(address(this), address(router), amountIn);
+
+        // swap the whole amount to eth.
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = router.WETH();
+
+        uint256 originalETHbalance = address(this).balance;
+
+        router.swapExactTokensForETHSupportingFeeOnTransferTokens(amountIn, amountOutMin, path, to, block.timestamp);
+
+        return address(this).balance - originalETHbalance;
     }
 
     /**

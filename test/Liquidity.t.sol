@@ -34,10 +34,14 @@ contract LiquidityTest is ERC20RewardsTest {
         // adding liquidity is like a sell so the tax should have been sold.
         // 24% tax by default: 1000 tokens * 0.76 (buy) * 0.76 (add liquidity) ~= 577.6.
         // 1000 - 577.6 = 422.4 tokens were collected as tax ~= 0.4224 eth.
+        // 20% is in the contract as rewards (0.084) and 80% in marketing wallet (0.337)
         assertEq(token.balanceOf(address(token)), 0);
-        assertApproxEqRel(address(token).balance, 0.4224 ether, 0.01e18);
+        assertApproxEqRel(address(token).balance, 0.084 ether, 0.01e18);
+        assertApproxEqRel(address(token.operator()).balance, 0.337 ether, 0.01e18);
+        assertApproxEqRel(address(token).balance + address(token.operator()).balance, 0.422 ether, 0.01e18);
 
-        uint256 originalTaxAmountEth = address(token).balance;
+        uint256 originalCollectedEth = address(token).balance;
+        uint256 originalMarketingEth = address(token.operator()).balance;
 
         // removing liquidity.
         removeLiquidity(provider);
@@ -48,6 +52,7 @@ contract LiquidityTest is ERC20RewardsTest {
 
         // no tax was collected on removing liquidity.
         assertEq(token.balanceOf(address(token)), 0);
-        assertEq(address(token).balance, originalTaxAmountEth);
+        assertEq(address(token).balance, originalCollectedEth);
+        assertEq(address(token.operator()).balance, originalMarketingEth);
     }
 }
