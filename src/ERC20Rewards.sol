@@ -56,6 +56,12 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 TokenPerShareLast; // token per share value of the last earn occurrence.
     }
 
+    // last block a distribution occurred.
+    uint256 public lastDistributionBlock;
+
+    // the number of reward donations to emit per block.
+    uint256 public rewardTokenPerBlock;
+
     // total amount of reward tokens ever claimed by holders.
     uint256 public totalRewardClaimed;
 
@@ -148,13 +154,28 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     /**
      * Return the reward balance = reward token balance of this contract minus
      * what's remaining to claim.
-     *
-     * Allow to display reward token donations in the frontend.
      */
     function rewardBalance() public view returns (uint256) {
         uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
 
         return rewardToken.balanceOf(address(this)) - amountToClaim;
+    }
+
+    /**
+     * Return the amount of emitted reward since the last distribution,
+     * according to the reward token per block.
+     */
+    function emittedRewards() public view returns (uint256) {
+        if (rewardTokenPerBlock == 0) return 0;
+        if (lastDistributionBlock == 0) return 0;
+
+        uint256 balance = rewardBalance();
+
+        if (balance == 0) return 0;
+
+        uint256 emitted = rewardTokenPerBlock * (block.number - lastDistributionBlock);
+
+        return emitted < balance ? emitted : balance;
     }
 
     /**
@@ -260,24 +281,25 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      *
      * Pass minimal expected amount to prevent slippage/frontrun.
      */
-    function distribute(uint256 amountOutMinimum) external nonReentrant {
+    function distribute(uint256 amountOutMinimum) public nonReentrant {
         if (totalShares == 0) return;
 
-        // swap eth balance to reward token.
+        // distribute the rewards that was emitted since last distribution.
+        uint256 amountToDistribute = emittedRewards();
+
+        // swap eth balance to reward token and add it to amount to distribute.
         uint256 amountIn = address(this).balance;
 
         if (amountIn > 0) {
-            _swapETHToRewardV3(address(this), amountIn, amountOutMinimum);
+            amountToDistribute += _swapETHToRewardV3(address(this), amountIn, amountOutMinimum);
         }
 
-        // distribute the available rewards (swapped ETH tax + reward token donations).
-        // === this contract balance of reward token minus what's remaining to claim.
-        uint256 amountToDistribute = rewardBalance();
-
+        // distribute if theres rewards.
         if (amountToDistribute == 0) return;
 
         TokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
         totalRewardDistributed += amountToDistribute;
+        lastDistributionBlock = block.number;
 
         emit Distribute(msg.sender, amountToDistribute);
     }
@@ -300,16 +322,25 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // exposed admin functions.
     // =========================================================================
 
+    /**
+     * Send initial allocations before trading started.
+     */
     function allocate(address to, uint256 amount) external onlyOwner {
         require(startBlock == 0, "!initialized");
 
         this.transfer(to, amount);
     }
 
+    /**
+     * Remove max wallet limits, one shoot.
+     */
     function removeLimits() external onlyOwner {
         maxWallet = type(uint256).max;
     }
 
+    /**
+     * Set the fees.
+     */
     function setFee(uint24 _buyFee, uint24 _sellFee, uint24 _marketingFee) external onlyOwner {
         require(_buyFee <= maxSwapFee, "!buyFee");
         require(_sellFee <= maxSwapFee, "!sellFee");
@@ -320,10 +351,21 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         marketingFee = _marketingFee;
     }
 
+    /**
+     * Remove the given address from the blacklist.
+     */
     function removeFromBlacklist(address addr) external onlyOwner {
         _removeFromBlacklist(addr);
     }
 
+    /**
+     * Initialize the trading with the given eth and this contract balance.
+     *
+     * Starts trading, sets max wallet to 1% of the supply, create the uniswap V2 pair
+     * with ETH, adds liquidity.
+     *
+     * LP tokens are sent to owner.
+     */
     function initialize() external payable onlyOwner {
         require(msg.value > 0, "!liquidity");
         require(startBlock == 0, "!initialized");
@@ -352,14 +394,39 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // exposed operator functions.
     // =========================================================================
 
+    /**
+     * Operator can update itself.
+     */
     function setOperator(address _operator) external {
         require(msg.sender == operator, "!operator");
         operator = _operator;
     }
 
+    /**
+     * Operator can update the reward token per block.
+     */
+    function setRewardTokenPerBlock(uint256 _rewardTokenPerBlock) external {
+        require(msg.sender == operator, "!operator");
+        rewardTokenPerBlock = _rewardTokenPerBlock;
+    }
+
+    /**
+     * Operator can set the uniswapV3 pool fee.
+     */
     function setPoolFee(uint24 _poolFee) external {
         require(msg.sender == operator, "!operator");
         poolFee = _poolFee;
+    }
+
+    /**
+     * Utility function for operator. Distribute the curent rewards, add new rewards at the
+     * given emission rate.
+     */
+    function addRewards(uint256 amount, uint256 _rewardTokenPerBlock, uint256 amountOutMinimum) external {
+        require(msg.sender == operator, "!operator");
+        distribute(amountOutMinimum);
+        rewardTokenPerBlock = _rewardTokenPerBlock;
+        rewardToken.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     // =========================================================================

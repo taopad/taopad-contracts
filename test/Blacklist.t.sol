@@ -224,7 +224,7 @@ contract BlacklistTest is ERC20RewardsTest {
         // total shares are now user1 + user2 balance.
         assertEq(token.totalShares(), balance1 + balance2);
 
-        // add rewards and distribute.
+        // add rewards and distribute and distribute.
         addRewards(1 ether);
 
         token.distribute(0);
