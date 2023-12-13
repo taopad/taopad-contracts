@@ -307,7 +307,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      *
      * Pass minimal expected amount to prevent slippage/frontrun.
      */
-    function distribute(uint256 amountOutMinimum) public nonReentrant {
+    function distribute(uint256 amountOutMinimum) public {
         if (totalShares == 0) return;
 
         // distribute the rewards that was emitted since last update.
