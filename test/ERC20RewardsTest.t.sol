@@ -8,8 +8,7 @@ import {IUniswapV2Pair} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pa
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import {ERC20Rewards} from "../src/ERC20Rewards.sol";
-import {ERC20RewardsCompounder} from "../src/ERC20RewardsCompounder.sol";
+import {Taopad} from "../src/Taopad.sol";
 
 contract ERC20Mock is ERC20 {
     constructor(uint256 _totalSupply) ERC20("R", "R") {
@@ -18,17 +17,15 @@ contract ERC20Mock is ERC20 {
 }
 
 contract ERC20RewardsTest is Test {
-    ERC20Rewards internal token;
+    Taopad internal token;
     IUniswapV2Router02 internal router;
     ISwapRouter internal swapRouter;
     IERC20Metadata internal rewardToken;
-    ERC20RewardsCompounder internal compounder;
 
     function setUp() public {
         vm.deal(address(this), 1000 ether);
 
-        token = new ERC20Rewards("Reward token", "RTK", 1e6);
-        compounder = new ERC20RewardsCompounder("Reward token share", "sRTK", token);
+        token = new Taopad();
 
         router = token.router();
         swapRouter = token.swapRouter();

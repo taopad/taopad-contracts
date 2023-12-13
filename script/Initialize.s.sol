@@ -2,17 +2,17 @@
 pragma solidity ^0.8.23;
 
 import {Script} from "forge-std/Script.sol";
-import {ERC20Rewards} from "../src/ERC20Rewards.sol";
+import {Taopad} from "../src/Taopad.sol";
 
 contract Initialize is Script {
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address ERC20RewardsAddress = vm.envAddress("ERC20_REWARDS_ADDRESS");
+        address taopadAddress = vm.envAddress("TAOPAD_ADDRESS");
 
-        ERC20Rewards token = ERC20Rewards(payable(ERC20RewardsAddress));
+        Taopad taopad = Taopad(payable(taopadAddress));
 
         vm.startBroadcast(deployerPrivateKey);
-        token.initialize{value: 1000 ether}();
+        taopad.initialize{value: 1 ether}();
         vm.stopBroadcast();
     }
 }

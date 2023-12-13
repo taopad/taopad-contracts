@@ -2,7 +2,7 @@
 pragma solidity ^0.8.23;
 
 import "forge-std/Test.sol";
-import {ERC20Rewards} from "../src/ERC20Rewards.sol";
+import {Taopad} from "../src/Taopad.sol";
 
 contract InitializeTest is Test {
     function testInitialize() public {
@@ -12,7 +12,7 @@ contract InitializeTest is Test {
         address user4 = vm.addr(4);
 
         // deploy the contract.
-        ERC20Rewards token = new ERC20Rewards("Reward token", "RTK", 1e6);
+        Taopad token = new Taopad();
 
         // contract has all supply.
         uint256 decimalConst = 10 ** token.decimals();
