@@ -86,10 +86,12 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // operator address.
     // =========================================================================
 
-    // the operator address receive marketing tax and can set pool fee.
-    // only operator can update operator address. Allows to renounce ownership
-    // while keep managing marketing wallet and update V3 poolFee.
-    // deployer/owner address by default.
+    // the operator address receive marketing tax and can set non critical
+    // settings. Allows to renounce ownership of critical settings. It is the
+    // same as the owner by default and receive marketing tax. It can:
+    // - update itself.
+    // - set uniswap V3 pool fee setting.
+    // - set the reward token per block rate.
     address public operator;
 
     // =========================================================================
@@ -131,6 +133,15 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     event Claim(address indexed addr, address indexed to, uint256 amount);
     event Distribute(address indexed addr, uint256 amount);
     event Sweep(address indexed addr, address indexed token, uint256 amount);
+
+    // =========================================================================
+    // modifiers.
+    // =========================================================================
+
+    modifier onlyOperator() {
+        require(msg.sender == operator, "!operator");
+        _;
+    }
 
     // =========================================================================
     // constructor.
@@ -416,16 +427,15 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     /**
      * Operator can update itself.
      */
-    function setOperator(address _operator) external {
-        require(msg.sender == operator, "!operator");
+    function setOperator(address _operator) external onlyOperator {
+        require(address(0) != _operator, "!address");
         operator = _operator;
     }
 
     /**
      * Set the uniswapV3 pool fee.
      */
-    function setPoolFee(uint24 _poolFee) external {
-        require(msg.sender == operator, "!operator");
+    function setPoolFee(uint24 _poolFee) external onlyOperator {
         poolFee = _poolFee;
     }
 
@@ -433,8 +443,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * Set the reward token per block. Accumulates the emitted rewards until
      * now before updateing the value.
      */
-    function setRewardTokenPerBlock(uint256 _rewardTokenPerBlock) external {
-        require(msg.sender == operator, "!operator");
+    function setRewardTokenPerBlock(uint256 _rewardTokenPerBlock) external onlyOperator {
         emittedRewardsAcc = emittedRewards();
         rewardTokenPerBlock = _rewardTokenPerBlock;
         lastEmittingBlock = block.number;
@@ -444,16 +453,14 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * Set the reward token per block without accumulating what has been
      * emitted. Fallback is case of an error.
      */
-    function setRewardTokenPerBlockUnsafe(uint256 _rewardTokenPerBlock) external {
-        require(msg.sender == operator, "!operator");
+    function setRewardTokenPerBlockUnsafe(uint256 _rewardTokenPerBlock) external onlyOperator {
         rewardTokenPerBlock = _rewardTokenPerBlock;
     }
 
     /**
      * Empty the emitted rewards. Fallback in case of error.
      */
-    function resetEmittedRewardsUnsafe() external {
-        require(msg.sender == operator, "!operator");
+    function resetEmittedRewardsUnsafe() external onlyOperator {
         emittedRewardsAcc = 0;
     }
 

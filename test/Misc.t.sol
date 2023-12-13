@@ -37,6 +37,13 @@ contract MiscTest is ERC20RewardsTest {
         vm.expectRevert("!operator");
 
         token.setOperator(user3);
+
+        // zero address reverts.
+        vm.prank(user2);
+
+        vm.expectRevert("!address");
+
+        token.setOperator(address(0));
     }
 
     function testSetPoolFee() public {
