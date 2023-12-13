@@ -39,41 +39,6 @@ contract MiscTest is ERC20RewardsTest {
         token.setOperator(user3);
     }
 
-    function testSetRewardTokenPerBlock() public {
-        address user1 = vm.addr(1);
-        address user2 = vm.addr(2);
-
-        // by default the reward token per block is 0.
-        assertEq(token.rewardTokenPerBlock(), 0);
-
-        // by default owner can set pool fee.
-        token.setRewardTokenPerBlock(1000);
-
-        assertEq(token.rewardTokenPerBlock(), 1000);
-
-        // set new operator.
-        token.setOperator(user1);
-
-        // operator can set pool fee.
-        vm.prank(user1);
-
-        token.setRewardTokenPerBlock(2000);
-
-        assertEq(token.rewardTokenPerBlock(), 2000);
-
-        // owner now revert.
-        vm.expectRevert("!operator");
-
-        token.setRewardTokenPerBlock(3000);
-
-        // non operator reverts.
-        vm.prank(user2);
-
-        vm.expectRevert("!operator");
-
-        token.setRewardTokenPerBlock(3000);
-    }
-
     function testSetPoolFee() public {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);

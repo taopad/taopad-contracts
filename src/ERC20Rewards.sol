@@ -56,12 +56,6 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 TokenPerShareLast; // token per share value of the last earn occurrence.
     }
 
-    // last block a distribution occurred.
-    uint256 public lastDistributionBlock;
-
-    // the number of reward donations to emit per block.
-    uint256 public rewardTokenPerBlock;
-
     // total amount of reward tokens ever claimed by holders.
     uint256 public totalRewardClaimed;
 
@@ -74,6 +68,19 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     // contract addresses that opted in for rewards.
     mapping(address => bool) public isOptin;
+
+    // =========================================================================
+    // reward donations.
+    // =========================================================================
+
+    // the number of reward tokens to emit per block.
+    uint256 public rewardTokenPerBlock;
+
+    // the amout of reward tokens already emitted.
+    uint256 public emittedRewardsAcc;
+
+    // last block reward tokens has been emitted.
+    uint256 public lastEmittingBlock;
 
     // =========================================================================
     // operator address.
@@ -152,28 +159,36 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     // =========================================================================
 
     /**
-     * Return the reward balance = reward token balance of this contract minus
-     * what's remaining to claim.
+     * Return the remaining rewards === reward balance - emitted rewards.
      */
-    function rewardBalance() public view returns (uint256) {
-        uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
-
-        return rewardToken.balanceOf(address(this)) - amountToClaim;
+    function remainingRewards() public view returns (uint256) {
+        return rewardBalance() - emittedRewards();
     }
 
     /**
-     * Return the amount of emitted reward since the last distribution,
-     * according to the reward token per block.
+     * Return the reward balance === balance - what's remaining to claim.
+     *
+     * It is the amount that can be emitted in total.
+     */
+    function rewardBalance() public view returns (uint256) {
+        uint256 toBeClaimed = totalRewardDistributed - totalRewardClaimed;
+
+        return rewardToken.balanceOf(address(this)) - toBeClaimed;
+    }
+
+    /**
+     * Return the amount of emitted reward since the last block rewards has
+     * been emitted, according to the reward token per block.
      */
     function emittedRewards() public view returns (uint256) {
+        if (lastEmittingBlock == 0) return 0;
         if (rewardTokenPerBlock == 0) return 0;
-        if (lastDistributionBlock == 0) return 0;
 
         uint256 balance = rewardBalance();
 
         if (balance == 0) return 0;
 
-        uint256 emitted = rewardTokenPerBlock * (block.number - lastDistributionBlock);
+        uint256 emitted = emittedRewardsAcc + (rewardTokenPerBlock * (block.number - lastEmittingBlock));
 
         return emitted < balance ? emitted : balance;
     }
@@ -284,7 +299,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     function distribute(uint256 amountOutMinimum) public nonReentrant {
         if (totalShares == 0) return;
 
-        // distribute the rewards that was emitted since last distribution.
+        // distribute the rewards that was emitted since last update.
         uint256 amountToDistribute = emittedRewards();
 
         // swap eth balance to reward token and add it to amount to distribute.
@@ -294,12 +309,16 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
             amountToDistribute += _swapETHToRewardV3(address(this), amountIn, amountOutMinimum);
         }
 
-        // distribute if theres rewards.
+        // stop when no rewards.
         if (amountToDistribute == 0) return;
 
+        // distribute rewards.
         TokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
         totalRewardDistributed += amountToDistribute;
-        lastDistributionBlock = block.number;
+
+        // reset emitted rewards.
+        emittedRewardsAcc = 0;
+        lastEmittingBlock = block.number;
 
         emit Distribute(msg.sender, amountToDistribute);
     }
@@ -403,15 +422,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Operator can update the reward token per block.
-     */
-    function setRewardTokenPerBlock(uint256 _rewardTokenPerBlock) external {
-        require(msg.sender == operator, "!operator");
-        rewardTokenPerBlock = _rewardTokenPerBlock;
-    }
-
-    /**
-     * Operator can set the uniswapV3 pool fee.
+     * Set the uniswapV3 pool fee.
      */
     function setPoolFee(uint24 _poolFee) external {
         require(msg.sender == operator, "!operator");
@@ -419,14 +430,31 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Utility function for operator. Distribute the curent rewards, add new rewards at the
-     * given emission rate.
+     * Set the reward token per block. Accumulates the emitted rewards until
+     * now before updateing the value.
      */
-    function addRewards(uint256 amount, uint256 _rewardTokenPerBlock, uint256 amountOutMinimum) external {
+    function setRewardTokenPerBlock(uint256 _rewardTokenPerBlock) external {
         require(msg.sender == operator, "!operator");
-        distribute(amountOutMinimum);
+        emittedRewardsAcc = emittedRewards();
         rewardTokenPerBlock = _rewardTokenPerBlock;
-        rewardToken.safeTransferFrom(msg.sender, address(this), amount);
+        lastEmittingBlock = block.number;
+    }
+
+    /**
+     * Set the reward token per block without accumulating what has been
+     * emitted. Fallback is case of an error.
+     */
+    function setRewardTokenPerBlockUnsafe(uint256 _rewardTokenPerBlock) external {
+        require(msg.sender == operator, "!operator");
+        rewardTokenPerBlock = _rewardTokenPerBlock;
+    }
+
+    /**
+     * Empty the emitted rewards. Fallback in case of error.
+     */
+    function resetEmittedRewardsUnsafe() external {
+        require(msg.sender == operator, "!operator");
+        emittedRewardsAcc = 0;
     }
 
     // =========================================================================
