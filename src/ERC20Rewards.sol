@@ -182,9 +182,9 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * It is the amount that can be emitted in total.
      */
     function rewardBalance() public view returns (uint256) {
-        uint256 toBeClaimed = totalRewardDistributed - totalRewardClaimed;
+        uint256 amountToClaim = totalRewardDistributed - totalRewardClaimed;
 
-        return rewardToken.balanceOf(address(this)) - toBeClaimed;
+        return rewardToken.balanceOf(address(this)) - amountToClaim;
     }
 
     /**
@@ -433,15 +433,15 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     }
 
     /**
-     * Set the uniswapV3 pool fee.
+     * Set the uniswap V3 pool fee.
      */
     function setPoolFee(uint24 _poolFee) external onlyOperator {
         poolFee = _poolFee;
     }
 
     /**
-     * Set the reward token per block. Accumulates the emitted rewards until
-     * now before updateing the value.
+     * Set the reward token per block. Accumulates the emitted rewards until this
+     * block before updating the value.
      */
     function setRewardTokenPerBlock(uint256 _rewardTokenPerBlock) external onlyOperator {
         emittedRewardsAcc = emittedRewards();
