@@ -40,7 +40,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     uint256 private immutable SCALE_FACTOR;
 
     // the accumulated amount of reward token per share.
-    uint256 private TokenPerShare;
+    uint256 private tokenPerShare;
 
     // total shares of this token.
     // (different from total supply because of fees and excluded wallets).
@@ -53,7 +53,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
     struct Share {
         uint256 amount; // recorded balance after last transfer.
         uint256 earned; // amount of tokens earned but not claimed yet.
-        uint256 TokenPerShareLast; // token per share value of the last earn occurrence.
+        uint256 tokenPerShareLast; // token per share value of the last earn occurrence.
     }
 
     // total amount of reward tokens ever claimed by holders.
@@ -313,7 +313,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         if (amountToDistribute == 0) return;
 
         // distribute rewards.
-        TokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
+        tokenPerShare += (amountToDistribute * SCALE_FACTOR * PRECISION) / totalShares;
         totalRewardDistributed += amountToDistribute;
 
         // reset emitted rewards.
@@ -539,7 +539,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         Share storage share = shareholders[addr];
 
         share.amount = balance;
-        share.TokenPerShareLast = TokenPerShare;
+        share.tokenPerShareLast = tokenPerShare;
     }
 
     /**
@@ -570,7 +570,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
      * rewards.
      */
     function _pendingRewards(Share memory share) private view returns (uint256) {
-        uint256 RDiff = TokenPerShare - share.TokenPerShareLast;
+        uint256 RDiff = tokenPerShare - share.tokenPerShareLast;
         uint256 earned = (share.amount * RDiff) / (SCALE_FACTOR * PRECISION);
 
         return share.earned + earned;
@@ -583,7 +583,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
         uint256 pending = _pendingRewards(share);
 
         share.earned = pending;
-        share.TokenPerShareLast = TokenPerShare;
+        share.tokenPerShareLast = tokenPerShare;
     }
 
     /**
