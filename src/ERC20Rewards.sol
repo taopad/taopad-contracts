@@ -102,7 +102,7 @@ contract ERC20Rewards is Ownable, ERC20, ERC20Burnable, ReentrancyGuard {
 
     uint256 public maxWallet = type(uint256).max; // set to 1% in initialize
     uint256 public startBlock = 0;
-    uint8 public deadBlocks = 2;
+    uint8 public deadBlocks = 1;
 
     // =========================================================================
     // pool options.

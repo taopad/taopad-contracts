@@ -9,7 +9,6 @@ contract BlacklistTest is ERC20RewardsTest {
         address user1 = vm.addr(1);
         address user2 = vm.addr(2);
         address user3 = vm.addr(3);
-        address user4 = vm.addr(4);
 
         // n block is a dead block.
         vm.roll(token.startBlock());
@@ -27,21 +26,13 @@ contract BlacklistTest is ERC20RewardsTest {
         assertTrue(token.isBlacklisted(user2));
         assertGt(token.balanceOf(user2), 0);
 
-        // n + 2 block is a dead block.
+        // n + 2 is ok.
         vm.roll(token.startBlock() + 2);
 
         buyToken(user3, 1 ether);
 
-        assertTrue(token.isBlacklisted(user3));
+        assertFalse(token.isBlacklisted(user3));
         assertGt(token.balanceOf(user3), 0);
-
-        // n + 3 is ok.
-        vm.roll(token.startBlock() + 3);
-
-        buyToken(user4, 1 ether);
-
-        assertFalse(token.isBlacklisted(user4));
-        assertGt(token.balanceOf(user4), 0);
     }
 
     function testRemoveFromBlacklist() public {
