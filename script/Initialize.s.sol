@@ -12,7 +12,7 @@ contract Initialize is Script {
         Taopad taopad = Taopad(payable(taopadAddress));
 
         vm.startBroadcast(deployerPrivateKey);
-        taopad.initialize{value: 1 ether}();
+        taopad.initialize{value: 1.6 ether}();
         vm.stopBroadcast();
     }
 }
